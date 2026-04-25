@@ -7,7 +7,13 @@ from AnonXMusic.misc import dbb, heroku
 from .logging import LOGGER
 
 dirr()
-git()
+
+# Safe git execution
+try:
+    git()
+except Exception as e:
+    LOGGER(__name__).warning(f"Git skipped: {e}")
+
 dbb()
 heroku()
 
