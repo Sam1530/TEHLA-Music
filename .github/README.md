@@ -93,7 +93,7 @@
 
 <div align="center">
 
-[![Deploy](https://img.shields.io/badge/🚀%20Deploy%20on%20Heroku-430098?style=for-the-badge&logo=heroku&logoColor=white)](https://dashboard.heroku.com/new?template=https://github.com/DivineDemonn/RaspberryRhythm)
+[![Deploy](https://img.shields.io/badge/🚀%20Deploy%20on%20Heroku-430098?style=for-the-badge&logo=heroku&logoColor=white)](https://dashboard.heroku.com/new?template=https://github.com/Sam1530/TEHLA-Music)
 
 </div>
 
