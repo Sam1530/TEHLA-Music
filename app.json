@@ -35,12 +35,12 @@
       "YTPROXY_URL": {
         "description": "YT Proxy Server Endpoint",
         "value": "https://tgapi.xbitcode.com",
-        "required": true
+        "required": false
       },
         "YT_API_KEY": {
         "description": "YT Proxy API KEY",
         "value": "",
-        "required": true
+        "required": false
       },
       "OWNER_ID": {
         "description": "The user id of user whom you would like to add as OWNER.",
