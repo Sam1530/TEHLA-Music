@@ -6,7 +6,6 @@ from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
 import config
-
 from ..logging import LOGGER
 
 
@@ -30,42 +29,57 @@ def install_req(cmd: str) -> Tuple[str, str, int, int]:
 
 
 def git():
-    REPO_LINK = config.UPSTREAM_REPO
-    if config.GIT_TOKEN:
-        GIT_USERNAME = REPO_LINK.split("com/")[1].split("/")[0]
-        TEMP_REPO = REPO_LINK.split("https://")[1]
-        UPSTREAM_REPO = f"https://{GIT_USERNAME}:{config.GIT_TOKEN}@{TEMP_REPO}"
-    else:
-        UPSTREAM_REPO = config.UPSTREAM_REPO
+    """
+    Safe Git handler:
+    - Skips on Heroku / Container (no .git repo)
+    - Runs only if proper repo exists
+    """
+
     try:
         repo = Repo()
-        LOGGER(__name__).info(f"Git Client Found [VPS DEPLOYER]")
-    except GitCommandError:
-        LOGGER(__name__).info(f"Invalid Git Command")
+        LOGGER(__name__).info("Git repository detected.")
+
     except InvalidGitRepositoryError:
-        repo = Repo.init()
-        if "origin" in repo.remotes:
-            origin = repo.remote("origin")
+        LOGGER(__name__).warning(
+            "No git repository found. Skipping auto-update (Heroku safe mode)."
+        )
+        return
+
+    except GitCommandError as e:
+        LOGGER(__name__).error(f"Git error: {e}")
+        return
+
+    # Optional: Only run update if explicitly enabled
+    if not getattr(config, "AUTO_UPDATE", False):
+        LOGGER(__name__).info("Auto-update disabled in config.")
+        return
+
+    try:
+        REPO_LINK = config.UPSTREAM_REPO
+
+        if config.GIT_TOKEN:
+            GIT_USERNAME = REPO_LINK.split("com/")[1].split("/")[0]
+            TEMP_REPO = REPO_LINK.split("https://")[1]
+            UPSTREAM_REPO = f"https://{GIT_USERNAME}:{config.GIT_TOKEN}@{TEMP_REPO}"
         else:
-            origin = repo.create_remote("origin", UPSTREAM_REPO)
+            UPSTREAM_REPO = REPO_LINK
+
+        if "origin" not in repo.remotes:
+            repo.create_remote("origin", UPSTREAM_REPO)
+
+        origin = repo.remote("origin")
+
+        LOGGER(__name__).info("Fetching latest updates...")
         origin.fetch()
-        repo.create_head(
-            config.UPSTREAM_BRANCH,
-            origin.refs[config.UPSTREAM_BRANCH],
-        )
-        repo.heads[config.UPSTREAM_BRANCH].set_tracking_branch(
-            origin.refs[config.UPSTREAM_BRANCH]
-        )
-        repo.heads[config.UPSTREAM_BRANCH].checkout(True)
+
         try:
-            repo.create_remote("origin", config.UPSTREAM_REPO)
-        except BaseException:
-            pass
-        nrs = repo.remote("origin")
-        nrs.fetch(config.UPSTREAM_BRANCH)
-        try:
-            nrs.pull(config.UPSTREAM_BRANCH)
+            origin.pull()
         except GitCommandError:
             repo.git.reset("--hard", "FETCH_HEAD")
+
         install_req("pip3 install --no-cache-dir -r requirements.txt")
-        LOGGER(__name__).info(f"Fetching updates from upstream repository...")
+
+        LOGGER(__name__).info("Bot successfully updated from upstream.")
+
+    except Exception as e:
+        LOGGER(__name__).error(f"Update failed: {e}")
