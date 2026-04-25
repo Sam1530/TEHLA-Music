@@ -40,13 +40,13 @@ COVER_Y = (CANVAS_SIZE[1] - COVER_SIZE) // 2
 RIGHT_START_X = COVER_X + COVER_SIZE + 55
 RIGHT_WIDTH = CANVAS_SIZE[0] - RIGHT_START_X - 70
 
-# ================= TEXT POSITIONS =================
-NOW_PLAYING_Y = 150
-TITLE_Y = 210
-ARTIST_Y = 275
-PROGRESS_Y = 345
-TIME_Y = 375
-CONTROLS_Y = 430
+# ================= TEXT & CONTROLS POSITIONS =================
+NOW_PLAYING_Y = 130
+TITLE_Y = 195
+ARTIST_Y = TITLE_Y + 65
+PROGRESS_Y = ARTIST_Y + 80
+TIME_Y = PROGRESS_Y + 45
+CONTROLS_Y = TIME_Y + 55
 
 # ================= HELPER FUNCTIONS =================
 
@@ -56,11 +56,14 @@ def ensure_cache_dir():
 
 def trim_text(text, font, max_width):
     """Trim text to fit within max_width with ellipsis"""
-    if font.getlength(text) <= max_width:
-        return text
-    while font.getlength(text + "…") > max_width:
-        text = text[:-1]
-    return text + "…"
+    try:
+        if font.getlength(text) <= max_width:
+            return text
+        while font.getlength(text + "…") > max_width:
+            text = text[:-1]
+        return text + "…"
+    except:
+        return text[:30] + "..." if len(text) > 30 else text
 
 def hex_to_rgb(hex_color):
     """Convert hex color to RGB tuple"""
@@ -69,7 +72,10 @@ def hex_to_rgb(hex_color):
 
 def blend_colors(color1, color2, ratio=0.5):
     """Blend two colors"""
-    return tuple(int(c1 * (1 - ratio) + c2 * ratio) for c1, c2 in zip(color1, color2))
+    return tuple(
+        max(0, min(255, int(c1 * (1 - ratio) + c2 * ratio)))
+        for c1, c2 in zip(color1, color2)
+    )
 
 # ================= VISUAL EFFECTS =================
 
@@ -83,8 +89,7 @@ def create_gradient_background(width, height, color1, color2):
         r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
         g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
         b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        alpha = 255
-        draw.line([(0, y), (width, y)], fill=(r, g, b, alpha))
+        draw.line([(0, y), (width, y)], fill=(r, g, b, 255))
     
     return gradient
 
@@ -134,7 +139,6 @@ def create_glow_border(image, border_size, color, blur_radius=15):
     glow = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(glow)
     
-    # Multiple glow layers
     for i in range(border_size, 0, -1):
         alpha = int(20 * (i / border_size))
         draw.rounded_rectangle(
@@ -166,7 +170,6 @@ def create_neon_ring(size, color, ring_width=4):
     ring = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(ring)
     
-    # Outer glow
     for i in range(15, 0, -2):
         alpha = int(10 * (i / 15))
         draw.rounded_rectangle(
@@ -176,7 +179,6 @@ def create_neon_ring(size, color, ring_width=4):
             width=ring_width + i // 2
         )
     
-    # Main ring
     draw.rounded_rectangle(
         (0, 0, size[0], size[1]),
         radius=22,
@@ -184,7 +186,6 @@ def create_neon_ring(size, color, ring_width=4):
         width=ring_width
     )
     
-    # Inner highlight
     draw.rounded_rectangle(
         (2, 2, size[0] - 2, size[1] - 2),
         radius=20,
@@ -194,121 +195,246 @@ def create_neon_ring(size, color, ring_width=4):
     
     return ring
 
-def create_progress_bar(x, y, width, height, progress, color):
-    """Create modern progress bar"""
-    bar = Image.new("RGBA", (width, height + 30), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(bar)
+def create_progress_bar_section(width, height, progress, color):
+    """Create modern progress bar section properly positioned"""
+    bar_section = Image.new("RGBA", (width, height + 50), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(bar_section)
+    
+    bar_height = height
+    bar_y = 10
     
     # Background track
     draw.rounded_rectangle(
-        (0, 15, width, height + 15),
-        radius=height // 2,
-        fill=(255, 255, 255, 15)
+        (0, bar_y, width, bar_y + bar_height),
+        radius=bar_height // 2,
+        fill=(255, 255, 255, 12)
     )
+    
+    # Track border glow
+    for i in range(4, 0, -1):
+        alpha = int(10 + i * 5)
+        draw.rounded_rectangle(
+            (0 - i, bar_y - i, width + i, bar_y + bar_height + i),
+            radius=(bar_height + i) // 2,
+            outline=(*color, alpha),
+            width=1
+        )
     
     # Progress fill
     fill_width = int(width * progress)
     
-    # Glow behind progress
-    for i in range(8, 0, -1):
-        alpha = int(15 * (i / 8))
-        draw.rounded_rectangle(
-            (0 - i, 15 - i, fill_width + i, height + 15 + i),
-            radius=(height + i * 2) // 2,
-            fill=(*color, alpha)
-        )
-    
-    # Main progress fill
     if fill_width > 0:
+        # Glow behind progress
+        for i in range(6, 0, -1):
+            alpha = int(12 * (i / 6))
+            draw.rounded_rectangle(
+                (0 - i, bar_y - i, fill_width + i, bar_y + bar_height + i),
+                radius=(bar_height + i) // 2,
+                fill=(*color, alpha)
+            )
+        
+        # Main progress
         draw.rounded_rectangle(
-            (0, 15, fill_width, height + 15),
-            radius=height // 2,
+            (0, bar_y, fill_width, bar_y + bar_height),
+            radius=bar_height // 2,
             fill=color
         )
         
-        # Highlight on progress
+        # Highlight
         draw.rounded_rectangle(
-            (0, 15, fill_width, height // 2 + 15),
-            radius=height // 2,
-            fill=(255, 255, 255, 40)
+            (0, bar_y, fill_width, bar_y + bar_height // 2),
+            radius=bar_height // 2,
+            fill=(255, 255, 255, 35)
         )
     
     # Thumb dot
-    thumb_x = fill_width
-    thumb_y = height // 2 + 15
+    thumb_x = max(8, fill_width)
+    thumb_y = bar_y + bar_height // 2
+    thumb_r = 10
     
     # Thumb glow
-    for i in range(6, 0, -1):
-        alpha = int(40 * (i / 6))
+    for i in range(5, 0, -1):
+        alpha = int(35 * (i / 5))
         draw.ellipse(
-            (thumb_x - 8 - i * 2, thumb_y - 8 - i * 2,
-             thumb_x + 8 + i * 2, thumb_y + 8 + i * 2),
+            (thumb_x - thumb_r - i * 2, thumb_y - thumb_r - i * 2,
+             thumb_x + thumb_r + i * 2, thumb_y + thumb_r + i * 2),
             fill=(*color, alpha)
         )
     
-    # Thumb main
+    # Thumb white
     draw.ellipse(
-        (thumb_x - 8, thumb_y - 8, thumb_x + 8, thumb_y + 8),
+        (thumb_x - thumb_r, thumb_y - thumb_r,
+         thumb_x + thumb_r, thumb_y + thumb_r),
         fill=WHITE
     )
+    
+    # Thumb colored core
     draw.ellipse(
-        (thumb_x - 4, thumb_y - 4, thumb_x + 4, thumb_y + 4),
+        (thumb_x - thumb_r + 3, thumb_y - thumb_r + 3,
+         thumb_x + thumb_r - 3, thumb_y + thumb_r - 3),
         fill=color
     )
     
-    return bar
+    # Time labels
+    try:
+        time_font = ImageFont.truetype("AnonXMusic/assets/font.ttf", 16)
+    except:
+        try:
+            time_font = ImageFont.truetype("AnonXMusic/assets/font2.ttf", 16)
+        except:
+            time_font = ImageFont.load_default()
+    
+    # Start time
+    draw.text((0, bar_y + bar_height + 12), "0:00", fill=(255, 255, 255, 180), font=time_font)
+    
+    return bar_section
 
-def create_control_button(symbol, size, active=True):
-    """Create neon control button"""
+def create_navigation_controls(size_config):
+    """
+    Create navigation controls: ⏮ ▷ ⏭
+    Returns tuple of (controls_image, total_width)
+    """
+    btn_size = size_config.get('btn_size', 48)
+    play_size = size_config.get('play_size', 64)
+    spacing = size_config.get('spacing', 30)
+    color = size_config.get('color', NEON_PURPLE)
+    
+    total_width = btn_size * 3 + play_size + spacing * 3
+    total_height = max(btn_size, play_size) + 40
+    
+    controls = Image.new("RGBA", (total_width, total_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(controls)
+    
+    # Positions
+    prev_x = 0
+    play_x = btn_size + spacing
+    next_x = btn_size + spacing + play_size + spacing
+    
+    center_y = total_height // 2
+    
+    # ⏮ Previous button (glowing)
+    prev_btn = create_icon_button(btn_size, "prev", color)
+    controls.alpha_composite(prev_btn, (prev_x, center_y - btn_size // 2))
+    
+    # ▶ Play button (large, glowing)
+    play_btn = create_play_button(play_size, color)
+    controls.alpha_composite(play_btn, (play_x, center_y - play_size // 2))
+    
+    # ⏭ Next button (glowing)
+    next_btn = create_icon_button(btn_size, "next", color)
+    controls.alpha_composite(next_btn, (next_x, center_y - btn_size // 2))
+    
+    return controls, total_width
+
+def create_play_button(size, color=NEON_PURPLE):
+    """Create glowing play button"""
+    btn = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(btn)
+    center = size // 2
+    radius = size // 3 + 2
+    
+    # Outer glow rings
+    for i in range(6, 0, -1):
+        alpha = int(20 * (i / 6))
+        draw.ellipse(
+            (center - radius - i * 3, center - radius - i * 3,
+             center + radius + i * 3, center + radius + i * 3),
+            fill=(*color, alpha)
+        )
+    
+    # Main circle background
+    draw.ellipse(
+        (center - radius, center - radius,
+         center + radius, center + radius),
+        fill=(*color, 230)
+    )
+    
+    # Circle border highlight
+    draw.ellipse(
+        (center - radius, center - radius,
+         center + radius, center + radius),
+        outline=(255, 255, 255, 80),
+        width=2
+    )
+    
+    # Play triangle (centered)
+    tri_size = int(radius * 0.75)
+    # Slightly offset right for visual balance
+    offset_x = 2
+    points = [
+        (center - tri_size // 3 + offset_x, center - tri_size // 2),
+        (center - tri_size // 3 + offset_x, center + tri_size // 2),
+        (center + tri_size * 2 // 3 + offset_x, center)
+    ]
+    draw.polygon(points, fill=WHITE)
+    
+    return btn
+
+def create_icon_button(size, icon_type, color=NEON_PURPLE):
+    """Create navigation icon buttons (prev/next)"""
     btn = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(btn)
     center = size // 2
     
-    if symbol == "play":
-        # Play button with circle
-        radius = size // 3
-        
-        # Outer glow rings
-        for i in range(5, 0, -1):
-            alpha = int(30 * (i / 5))
-            draw.ellipse(
-                (center - radius - i * 3, center - radius - i * 3,
-                 center + radius + i * 3, center + radius + i * 3),
-                fill=(*NEON_PURPLE, alpha)
-            )
-        
-        # Main circle
-        draw.ellipse(
-            (center - radius, center - radius,
-             center + radius, center + radius),
-            fill=NEON_PURPLE
+    # Glow background
+    for i in range(3, 0, -1):
+        alpha = int(12 * (i / 3))
+        draw.rounded_rectangle(
+            (i, i, size - i, size - i),
+            radius=size // 4,
+            fill=(*color, alpha)
         )
+    
+    # Main circle
+    draw.rounded_rectangle(
+        (4, 4, size - 4, size - 4),
+        radius=size // 4,
+        fill=(*color, 40),
+        outline=(*color, 130),
+        width=2
+    )
+    
+    if icon_type == "prev":
+        # ⏮ Previous (two triangles + bar)
+        bar_x = size // 4
+        tri_w = size // 5
+        tri_h = size // 4
         
-        # Play triangle
-        triangle_size = int(radius * 0.8)
-        points = [
-            (center - triangle_size // 3, center - triangle_size // 2),
-            (center - triangle_size // 3, center + triangle_size // 2),
-            (center + triangle_size * 2 // 3, center)
-        ]
-        draw.polygon(points, fill=WHITE)
-        
-    elif symbol == "pause":
-        bar_width = size // 6
-        bar_height = size // 2
-        
+        # Vertical bar
         draw.rectangle(
-            (center - bar_width - 4, center - bar_height // 2,
-             center - 4, center + bar_height // 2),
-            fill=WHITE if active else DARK_GRAY,
-            outline=None
+            (bar_x - 2, center - tri_h, bar_x + 2, center + tri_h),
+            fill=(255, 255, 255, 220)
         )
+        
+        # Two triangles pointing left
+        for offset in [0, size // 5]:
+            points = [
+                (bar_x + 6 + offset, center - tri_h),
+                (bar_x + 6 + offset, center + tri_h),
+                (bar_x + 6 - tri_w + offset, center)
+            ]
+            draw.polygon(points, fill=(255, 255, 255, 220))
+    
+    elif icon_type == "next":
+        # ⏭ Next (two triangles + bar) - mirrored
+        bar_x = size - size // 4
+        tri_w = size // 5
+        tri_h = size // 4
+        
+        # Vertical bar
         draw.rectangle(
-            (center + 4, center - bar_height // 2,
-             center + bar_width + 4, center + bar_height // 2),
-            fill=WHITE if active else DARK_GRAY,
-            outline=None
+            (bar_x - 2, center - tri_h, bar_x + 2, center + tri_h),
+            fill=(255, 255, 255, 220)
         )
+        
+        # Two triangles pointing right
+        for offset in [0, -size // 5]:
+            points = [
+                (bar_x - 6 + offset, center - tri_h),
+                (bar_x - 6 + offset, center + tri_h),
+                (bar_x - 6 + tri_w + offset, center)
+            ]
+            draw.polygon(points, fill=(255, 255, 255, 220))
     
     return btn
 
@@ -393,8 +519,6 @@ async def get_thumb(videoid, user_id=None):
         canvas.paste(bg, (0, 0))
         
         # ===== ADD BACKGROUND EFFECTS =====
-        
-        # Radial glow from center
         radial_glow = create_radial_glow(
             CANVAS_SIZE, NEON_PURPLE,
             center=(CANVAS_SIZE[0] // 2 + 100, CANVAS_SIZE[1] // 2),
@@ -402,37 +526,24 @@ async def get_thumb(videoid, user_id=None):
         )
         canvas = Image.alpha_composite(canvas, radial_glow)
         
-        # Particle field
         particles = create_particle_field(CANVAS_SIZE, NEON_PURPLE_LIGHT)
         canvas = Image.alpha_composite(canvas, particles)
         
         # ===== PROCESS COVER ART =====
-        
-        # Resize cover
         cover = cover_img.resize((COVER_SIZE, COVER_SIZE), Image.LANCZOS)
-        
-        # Enhance cover
         cover = ImageEnhance.Contrast(cover).enhance(1.2)
         cover = ImageEnhance.Color(cover).enhance(1.15)
         cover = ImageEnhance.Sharpness(cover).enhance(1.3)
         
-        # Create shadow
-        shadow = create_shadow(
-            (COVER_SIZE, COVER_SIZE), 40, (15, 15)
-        )
-        canvas.alpha_composite(
-            shadow,
-            (COVER_X - 20, COVER_Y - 20)
-        )
+        # Shadow
+        shadow = create_shadow((COVER_SIZE, COVER_SIZE), 40, (15, 15))
+        canvas.alpha_composite(shadow, (COVER_X - 20, COVER_Y - 20))
         
-        # Create glow border
+        # Glow border
         glow_border = create_glow_border(cover, 20, NEON_PURPLE)
-        canvas.alpha_composite(
-            glow_border,
-            (COVER_X - 20, COVER_Y - 20)
-        )
+        canvas.alpha_composite(glow_border, (COVER_X - 20, COVER_Y - 20))
         
-        # Apply rounded corners to cover
+        # Rounded corners
         cover_mask = Image.new("L", (COVER_SIZE, COVER_SIZE), 0)
         ImageDraw.Draw(cover_mask).rounded_rectangle(
             (0, 0, COVER_SIZE, COVER_SIZE),
@@ -440,11 +551,9 @@ async def get_thumb(videoid, user_id=None):
             fill=255
         )
         cover.putalpha(cover_mask)
-        
-        # Place cover
         canvas.alpha_composite(cover, (COVER_X, COVER_Y))
         
-        # Create neon ring around cover
+        # Neon ring
         neon_ring = create_neon_ring(
             (COVER_SIZE + 16, COVER_SIZE + 16),
             NEON_PURPLE_LIGHT,
@@ -479,7 +588,6 @@ async def get_thumb(videoid, user_id=None):
             except:
                 continue
         
-        # Fallback to default
         if title_font is None:
             title_font = ImageFont.load_default()
         if artist_font is None:
@@ -493,9 +601,7 @@ async def get_thumb(videoid, user_id=None):
         
         # ===== "NOW PLAYING" LABEL =====
         now_playing_text = "◆ NOW PLAYING"
-        now_playing_bbox = draw.textbbox((0, 0), now_playing_text, font=now_playing_font)
         
-        # Glow effect for label
         for offset in range(3, 0, -1):
             glow_alpha = 50 - offset * 10
             draw.text(
@@ -515,7 +621,6 @@ async def get_thumb(videoid, user_id=None):
         # ===== SONG TITLE =====
         title_text = trim_text(title, title_font, RIGHT_WIDTH)
         
-        # Title glow
         for offset in range(4, 0, -1):
             glow_alpha = 40 - offset * 8
             draw.text(
@@ -542,79 +647,92 @@ async def get_thumb(videoid, user_id=None):
             fill=LIGHT_GRAY
         )
         
-        # ===== PROGRESS BAR =====
-        progress_bar = create_progress_bar(
-            RIGHT_START_X, PROGRESS_Y,
-            RIGHT_WIDTH, 6,
-            0.55,  # Dummy progress
-            NEON_PURPLE
+        # ===== PROGRESS BAR (RIGHT SIDE, BELOW ARTIST) =====
+        progress_section = create_progress_bar_section(
+            RIGHT_WIDTH, 8, 0.55, NEON_PURPLE
         )
-        canvas.alpha_composite(progress_bar, (0, 0))
+        canvas.alpha_composite(progress_section, (RIGHT_START_X, PROGRESS_Y))
         
-        # ===== TIME LABELS =====
-        draw.text(
-            (RIGHT_START_X, TIME_Y),
-            "0:00",
-            font=small_font,
-            fill=(255, 255, 255, 180)
-        )
-        
+        # Duration label on right side of progress bar
         duration_text = str(duration) if duration else "0:00"
-        dur_bbox = draw.textbbox((0, 0), duration_text, font=small_font)
-        dur_width = dur_bbox[2] - dur_bbox[0]
+        try:
+            dur_bbox = draw.textbbox((0, 0), duration_text, font=small_font)
+            dur_width = dur_bbox[2] - dur_bbox[0]
+        except:
+            dur_width = len(duration_text) * 10
         
         draw.text(
-            (RIGHT_START_X + RIGHT_WIDTH - dur_width, TIME_Y),
+            (RIGHT_START_X + RIGHT_WIDTH - dur_width, PROGRESS_Y + 18),
             duration_text,
             font=small_font,
             fill=(255, 255, 255, 180)
         )
         
-        # ===== CONTROL BUTTONS =====
-        controls_center_x = RIGHT_START_X + RIGHT_WIDTH // 2
-        controls_y = CONTROLS_Y
+        # ===== NAVIGATION CONTROLS (⏮ ▷ ⏭) BELOW PROGRESS BAR =====
+        controls, controls_width = create_navigation_controls({
+            'btn_size': 48,
+            'play_size': 64,
+            'spacing': 35,
+            'color': NEON_PURPLE
+        })
         
-        # Play button
-        play_btn = create_control_button("play", 80)
-        canvas.alpha_composite(
-            play_btn,
-            (controls_center_x - 40, controls_y)
-        )
+        controls_x = RIGHT_START_X + (RIGHT_WIDTH - controls_width) // 2
+        controls_y = TIME_Y + 15
+        canvas.alpha_composite(controls, (controls_x, controls_y))
         
-        # ===== BOT NAME LABEL =====
+        # ===== BOT NAME LABEL (BELOW CONTROLS) =====
         bot_name = getattr(app, 'name', 'RaspberryRhythm')
         
-        name_bbox = draw.textbbox((0, 0), bot_name, font=small_font)
-        
         draw.text(
-            (RIGHT_START_X, controls_y + 100),
+            (RIGHT_START_X + (RIGHT_WIDTH - len(bot_name) * 8) // 2, controls_y + 75),
             f"⚡ {bot_name}",
             font=small_font,
             fill=NEON_PURPLE_LIGHT
         )
         
-        # ===== SIGNATURE =====
-        signature = "Made with 💜 by @DivineDemonn"
+        # ===== SIGNATURE (BOTTOM LEFT) =====
+        signature = "Made with 🤍 by @DivineDemonn"
+        try:
+            sig_bbox = draw.textbbox((0, 0), signature, font=small_font)
+            sig_width = sig_bbox[2] - sig_bbox[0]
+        except:
+            sig_width = len(signature) * 8
+        
+        # Signature with subtle glow
+        for offset in range(2, 0, -1):
+            draw.text(
+                (30 - offset, CANVAS_SIZE[1] - 45 - offset),
+                signature,
+                font=small_font,
+                fill=(*WHITE, 30 - offset * 10)
+            )
+        
         draw.text(
-            (30, CANVAS_SIZE[1] - 35),
+            (30, CANVAS_SIZE[1] - 45),
             signature,
             font=small_font,
-            fill=(*NEON_PURPLE, 150)
+            fill=WHITE
         )
         
-        # ===== VERSION LABEL =====
+        # ===== VERSION LABEL (BOTTOM RIGHT) =====
+        version_text = "v3.0"
         draw.text(
-            (CANVAS_SIZE[0] - 100, CANVAS_SIZE[1] - 35),
-            "v2.0",
+            (CANVAS_SIZE[0] - 70, CANVAS_SIZE[1] - 45),
+            version_text,
             font=small_font,
-            fill=(*NEON_PURPLE, 120)
+            fill=(*NEON_PURPLE_LIGHT, 150)
+        )
+        
+        # ===== DECORATIVE LINE ABOVE SIGNATURE =====
+        line_y = CANVAS_SIZE[1] - 60
+        draw.line(
+            [(30, line_y), (CANVAS_SIZE[0] - 70, line_y)],
+            fill=(*NEON_PURPLE, 40),
+            width=1
         )
         
         # ===== SAVE THUMBNAIL =====
-        # Convert to RGB for saving
         final_canvas = canvas.convert("RGB")
-        
-        # Save with high quality
         final_canvas.save(cache_path, "PNG", quality=100, optimize=True)
         
         # ===== CLEANUP =====
@@ -629,18 +747,20 @@ async def get_thumb(videoid, user_id=None):
             pass
         
         # ===== MANAGE CACHE SIZE =====
-        cache_files = sorted(
-            [os.path.join(CACHE_DIR, f) for f in os.listdir(CACHE_DIR) if f.endswith('.png')],
-            key=os.path.getmtime,
-            reverse=True
-        )
-        
-        # Keep only last 20 thumbnails
-        for old_file in cache_files[20:]:
-            try:
-                os.remove(old_file)
-            except:
-                pass
+        try:
+            cache_files = sorted(
+                [os.path.join(CACHE_DIR, f) for f in os.listdir(CACHE_DIR) if f.endswith('.png')],
+                key=os.path.getmtime,
+                reverse=True
+            )
+            
+            for old_file in cache_files[20:]:
+                try:
+                    os.remove(old_file)
+                except:
+                    pass
+        except:
+            pass
         
         return cache_path
         
@@ -648,7 +768,6 @@ async def get_thumb(videoid, user_id=None):
         print(f"[Thumbnail] Error generating thumbnail: {e}")
         traceback.print_exc()
         
-        # Cleanup on error
         try:
             os.remove(thumb_file)
         except:
