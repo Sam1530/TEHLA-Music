@@ -6,7 +6,7 @@ from PIL import (
     Image, ImageDraw, ImageEnhance,
     ImageFilter, ImageFont, ImageOps
 )
-from py_yt import VideosSearch
+from ytSearch import VideosSearch
 import math
 import random
 
