@@ -13,13 +13,28 @@ from AnonXMusic import app
 from config import YOUTUBE_IMG_URL
 
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+# ── Neon Color Palette ────────────────────────────────────────────────────────
+NEON_COLORS = {
+    "cyber_purple": (157, 78, 221),
+    "electric_blue": (0, 195, 255),
+    "neon_pink": (255, 20, 147),
+    "acid_green": (57, 255, 20),
+    "toxic_yellow": (255, 255, 0),
+    "plasma_orange": (255, 103, 0),
+    "cyber_cyan": (0, 255, 255),
+    "hot_magenta": (255, 0, 128),
+    "laser_red": (255, 30, 50),
+    "ultra_violet": (138, 43, 226),
+}
+
+
+# ── helper functions ──────────────────────────────────────────────────────────
 
 def changeImageSize(maxWidth, maxHeight, image):
-    widthRatio  = maxWidth  / image.size[0]
+    widthRatio = maxWidth / image.size[0]
     heightRatio = maxHeight / image.size[1]
-    newWidth    = int(widthRatio  * image.size[0])
-    newHeight   = int(heightRatio * image.size[1])
+    newWidth = int(widthRatio * image.size[0])
+    newHeight = int(heightRatio * image.size[1])
     return image.resize((newWidth, newHeight), Image.LANCZOS)
 
 
@@ -33,273 +48,258 @@ def circle(img):
     return result
 
 
-def clear(text, limit=45):
-    words, title = text.split(" "), ""
+def clear(text, limit=38):
+    """Trim text to fit within character limit while keeping whole words."""
+    words = text.split(" ")
+    title = ""
     for w in words:
         if len(title) + len(w) < limit:
             title += " " + w
     return title.strip()
 
 
-def get_dominant_color(img: Image.Image, n=4):
-    """Return most vibrant dominant colour via mini k-means."""
-    small = img.convert("RGB").resize((120, 120))
-    arr   = np.array(small).reshape(-1, 3).astype(float)
+def get_vibrant_palette(img: Image.Image):
+    """Extract the most vibrant colors from the cover art for dynamic theming."""
+    small = img.convert("RGB").resize((150, 150))
+    arr = np.array(small).reshape(-1, 3).astype(float)
+
+    # Enhanced K-means for better color extraction
     np.random.seed(42)
-    centers = arr[np.random.choice(len(arr), n, replace=False)]
-    for _ in range(12):
-        dists  = np.linalg.norm(arr[:, None] - centers[None], axis=2)
+    n_clusters = 8
+    centers = arr[np.random.choice(len(arr), n_clusters, replace=False)]
+
+    for _ in range(20):
+        dists = np.linalg.norm(arr[:, None] - centers[None], axis=2)
         labels = np.argmin(dists, axis=1)
-        for k in range(n):
+        for k in range(n_clusters):
             pts = arr[labels == k]
             if len(pts):
                 centers[k] = pts.mean(axis=0)
-    best, best_sat = centers[0], 0
+
+    # Score colors by vibrancy (saturation × luminance balance)
+    scored = []
     for c in centers:
         r, g, b = c / 255.0
-        mx, mn  = max(r, g, b), min(r, g, b)
-        sat     = (mx - mn) / (mx + 1e-9)
-        lum     = (mx + mn) / 2
-        # prefer vibrant colours (high sat, mid luminance)
-        score   = sat * (1 - abs(lum - 0.5))
-        if score > best_sat:
-            best_sat, best = score, c
-    return tuple(int(x) for x in best)
+        mx, mn = max(r, g, b), min(r, g, b)
+        saturation = (mx - mn) / (mx + 1e-9)
+        luminance = (mx + mn) / 2
+        # Prefer high saturation + mid-high luminance for neon effect
+        score = saturation * 2.0 + (1 - abs(luminance - 0.6)) * 1.5
+        scored.append((score, c))
+
+    scored.sort(reverse=True)
+
+    # Return top 5 vibrant colors
+    return [tuple(int(x) for x in c) for _, c in scored[:5]]
 
 
-def build_palette(base):
-    """
-    Always return ALL 10 neon colours in a visually pleasing rainbow cycle,
-    rotated so the colour closest to the song's dominant hue comes first.
-    This guarantees a true multi-colour rainbow ring every time regardless
-    of the song cover — not just warm or cool tones.
-
-    The 10 neon colours (as specified):
-      Blue #1e90ff  Purple #a855f7  Rose #f43f5e  Amber #f59e0b
-      Teal #14b8a6  Green #22c55e   Orange #f97316 Pink #ec4899
-      Cyan #06b6d4  White #e2e8f0
-    """
-    # Fixed rainbow cycle order (visually flows blue→purple→rose→amber→teal etc.)
-    RAINBOW = [
-        (0x1e, 0x90, 0xff),   # Blue
-        (0x06, 0xb6, 0xd4),   # Cyan
-        (0x14, 0xb8, 0xa6),   # Teal
-        (0x22, 0xc5, 0x5e),   # Green
-        (0xf5, 0x9e, 0x0b),   # Amber
-        (0xf9, 0x73, 0x16),   # Orange
-        (0xf4, 0x3f, 0x5e),   # Rose
-        (0xec, 0x48, 0x99),   # Pink
-        (0xa8, 0x55, 0xf7),   # Purple
-        (0xe2, 0xe8, 0xf0),   # White
-    ]
-    br, bg, bb = base
-
-    def dist(c):
-        return math.sqrt((c[0]-br)**2 * 0.299 + (c[1]-bg)**2 * 0.587 + (c[2]-bb)**2 * 0.114)
-
-    # Find the index of the closest colour in the rainbow
-    best_idx = min(range(len(RAINBOW)), key=lambda i: dist(RAINBOW[i]))
-
-    # Rotate the rainbow so the closest colour leads
-    rotated = RAINBOW[best_idx:] + RAINBOW[:best_idx]
-    return rotated  # all 10 colours, rainbow-ordered, dominant-first
-
-
-def make_neon_glow_border(size, bbox, dominant, radius=30, stroke=6, glow_layers=10):
-    """
-    Clean single-stroke neon border with soft glowing blur halo.
-    - One thin bright stroke at the bbox edge
-    - Multiple expanding faint layers behind it for the glow spread
-    - Colour comes from the song dominant, mapped to the closest neon hue
-    - Same function used for both outer card and centre rectangle ring
-    """
-    NEON = [
-        (0x1e, 0x90, 0xff),   # Blue
-        (0x06, 0xb6, 0xd4),   # Cyan
-        (0x14, 0xb8, 0xa6),   # Teal
-        (0x22, 0xc5, 0x5e),   # Green
-        (0xf5, 0x9e, 0x0b),   # Amber
-        (0xf9, 0x73, 0x16),   # Orange
-        (0xf4, 0x3f, 0x5e),   # Rose
-        (0xec, 0x48, 0x99),   # Pink
-        (0xa8, 0x55, 0xf7),   # Purple
-        (0xe2, 0xe8, 0xf0),   # White
-    ]
-    br, bg, bb = dominant
-
-    def dist(c):
-        return math.sqrt((c[0]-br)**2*0.299 + (c[1]-bg)**2*0.587 + (c[2]-bb)**2*0.114)
-
-    # Pick the single closest neon hue — this IS the border colour
-    best = min(NEON, key=dist)
-    nr, ng, nb = best
-
-    # Secondary accent (second closest, for subtle glow variation)
-    sorted_neon = sorted(NEON, key=dist)
-    nr2, ng2, nb2 = sorted_neon[1]
-
-    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+def create_neon_glow(size, bbox, color, radius=30, width=4, intensity=15):
+    """Create a stunning multi-layered neon glow effect."""
+    overlay = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
     x0, y0, x1, y1 = bbox
-    ld = ImageDraw.Draw(layer)
 
-    # ── Outer soft glow halo (wide, faint, expanding) ────────────────────────
-    for i in range(glow_layers, 0, -1):
-        t      = i / glow_layers
-        expand = int(t ** 0.5 * glow_layers * 4)   # spreads outward
-        alpha  = int(4 + (1 - t) ** 1.2 * 140)     # faint outside, brighter inside
-        w      = stroke + int(t * glow_layers * 2)
-        lx0    = max(0,       x0 - expand)
-        ly0    = max(0,       y0 - expand)
-        lx1    = min(size[0], x1 + expand)
-        ly1    = min(size[1], y1 + expand)
-        # alternate primary/secondary colour for subtle shimmer
-        cr, cg, cb = (nr, ng, nb) if i % 2 == 0 else (nr2, ng2, nb2)
-        ld.rounded_rectangle(
-            (lx0, ly0, lx1, ly1),
-            radius=max(6, radius - expand // 6),
-            outline=(cr, cg, cb, alpha),
-            width=w
-        )
+    r, g, b = color
 
-    # ── Bright inner glow (tight, vivid) ─────────────────────────────────────
-    for s in range(4, 0, -1):
-        alpha = 60 + s * 35
-        ld.rounded_rectangle(
-            (x0 - s, y0 - s, x1 + s, y1 + s),
-            radius=radius,
-            outline=(min(255, nr + 60), min(255, ng + 60), min(255, nb + 60), alpha),
-            width=stroke + s
-        )
+    # Outer glow layers (wide and faint)
+    for i in range(intensity, 0, -1):
+        expand = i * 3
+        alpha = int(3 + (intensity - i) * 4)
+        glow_color = (min(255, r), min(255, g), min(255, b), alpha)
 
-    # ── Crisp primary stroke ──────────────────────────────────────────────────
-    ld.rounded_rectangle(
-        bbox, radius=radius,
-        outline=(min(255, nr + 90), min(255, ng + 90), min(255, nb + 90), 255),
-        width=stroke
-    )
-
-    # ── White-hot centre line ─────────────────────────────────────────────────
-    ld.rounded_rectangle(
-        bbox, radius=radius,
-        outline=(255, 255, 255, 90),
-        width=max(1, stroke // 3)
-    )
-
-    return layer
-
-
-def draw_glowing_progress_bar(draw, canvas, x0, y0, x1, bar_h, thumb_frac, palette):
-    """
-    Draw a neon-glowing progress bar whose colour matches the border palette.
-    Includes soft glow behind the filled portion + bright thumb dot with glow.
-    """
-    # ── track background ──────────────────────────────────────────────────────
-    draw.rounded_rectangle(
-        [(x0, y0), (x1, y0 + bar_h)],
-        radius=bar_h // 2,
-        fill=(50, 50, 80, 160)
-    )
-
-    thumb_x = int(x0 + (x1 - x0) * thumb_frac)
-    base_col = palette[0]
-    accent   = palette[3]   # magenta-pink for contrast pop
-
-    # ── glow behind filled bar (soft, wide) ──────────────────────────────────
-    for glow in range(6, 0, -1):
-        gr, gg, gb = base_col
-        ga         = int(15 + (6 - glow) * 18)
-        gpad       = glow * 2
         draw.rounded_rectangle(
-            [(x0, y0 - gpad // 2), (thumb_x, y0 + bar_h + gpad // 2)],
-            radius=bar_h // 2 + gpad // 2,
-            fill=(min(255, gr + 60), min(255, gg + 60), min(255, gb + 60), ga)
+            (x0 - expand, y0 - expand, x1 + expand, y1 + expand),
+            radius=radius + expand,
+            outline=glow_color,
+            width=width + i
         )
 
-    # ── filled (played) bar – gradient-like using two overlaid rects ─────────
-    r1, g1, b1 = base_col
-    r2, g2, b2 = accent
+    # Medium glow layer
+    for i in range(6, 0, -1):
+        expand = i
+        alpha = int(30 + i * 20)
+        glow_color = (min(255, r + 50), min(255, g + 50), min(255, b + 50), alpha)
+
+        draw.rounded_rectangle(
+            (x0 - expand, y0 - expand, x1 + expand, y1 + expand),
+            radius=radius,
+            outline=glow_color,
+            width=width + 2
+        )
+
+    # Inner bright core
+    inner_color = (min(255, r + 100), min(255, g + 100), min(255, b + 100), 255)
     draw.rounded_rectangle(
-        [(x0, y0), (thumb_x, y0 + bar_h)],
-        radius=bar_h // 2,
-        fill=(min(255, r1 + 80), min(255, g1 + 80), min(255, b1 + 80), 240)
-    )
-    # thin bright top highlight stripe
-    draw.rounded_rectangle(
-        [(x0, y0), (thumb_x, y0 + bar_h // 3)],
-        radius=bar_h // 2,
-        fill=(min(255, r2 + 100), min(255, g2 + 100), min(255, b2 + 100), 120)
+        bbox, radius=radius, outline=inner_color, width=width
     )
 
-    # ── thumb dot glow ────────────────────────────────────────────────────────
-    TR = 10
-    cy = y0 + bar_h // 2
-    for glow in range(5, 0, -1):
-        gr, gg, gb = accent
-        ga         = int(20 + (5 - glow) * 25)
-        gr_r       = TR + glow * 3
+    # White hot highlight
+    draw.rounded_rectangle(
+        bbox, radius=radius, outline=(255, 255, 255, 120), width=max(1, width // 2)
+    )
+
+    return overlay
+
+
+def draw_particle_background(size, palette):
+    """Create a dynamic particle/dot background for extra depth."""
+    overlay = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    np.random.seed(42)
+
+    for _ in range(120):
+        x = np.random.randint(0, size[0])
+        y = np.random.randint(0, size[1])
+        r = np.random.randint(2, 8)
+        color = palette[np.random.randint(0, len(palette))]
+        alpha = np.random.randint(15, 50)
         draw.ellipse(
-            [(thumb_x - gr_r, cy - gr_r), (thumb_x + gr_r, cy + gr_r)],
-            fill=(min(255, gr + 80), min(255, gg + 80), min(255, gb + 80), ga)
+            (x - r, y - r, x + r, y + r),
+            fill=(*color, alpha)
         )
-    # solid bright dot
+
+    return overlay
+
+
+def draw_glowing_progress(draw, canvas_size, x0, y0, x1, bar_height, progress, palette):
+    """Draw an animated-looking glowing progress bar."""
+    # Track background
+    draw.rounded_rectangle(
+        [(x0, y0), (x1, y0 + bar_height)],
+        radius=bar_height // 2,
+        fill=(20, 15, 35, 180)
+    )
+
+    # Track outline glow
+    track_glow = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+    tg_draw = ImageDraw.Draw(track_glow)
+    for i in range(4, 0, -1):
+        alpha = 20 + i * 15
+        tg_draw.rounded_rectangle(
+            (x0 - i, y0 - i, x1 + i, y0 + bar_height + i),
+            radius=bar_height // 2 + i,
+            outline=(palette[0][0], palette[0][1], palette[0][2], alpha),
+            width=2
+        )
+
+    progress_x = int(x0 + (x1 - x0) * progress)
+
+    # Filled progress glow layers
+    for i in range(8, 0, -1):
+        alpha = 8 + i * 8
+        spread = i * 2
+        color = palette[i % len(palette)]
+        progress_glow = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+        pg_draw = ImageDraw.Draw(progress_glow)
+        pg_draw.rounded_rectangle(
+            (x0 - spread // 2, y0 - spread // 2, progress_x + spread // 2, y0 + bar_height + spread // 2),
+            radius=bar_height // 2 + spread // 2,
+            fill=(*color, alpha)
+        )
+        # Paste manually (simplified composite)
+
+    # Filled portion
+    filled_color = palette[0]
+    draw.rounded_rectangle(
+        [(x0, y0), (progress_x, y0 + bar_height)],
+        radius=bar_height // 2,
+        fill=(min(255, filled_color[0] + 60), min(255, filled_color[1] + 60), min(255, filled_color[2] + 60), 230)
+    )
+
+    # Highlight on filled portion
+    draw.rounded_rectangle(
+        [(x0, y0), (progress_x, y0 + bar_height // 3)],
+        radius=bar_height // 2,
+        fill=(255, 255, 255, 60)
+    )
+
+    # Glowing thumb dot
+    thumb_radius = 12
+    thumb_y = y0 + bar_height // 2
+    for i in range(5, 0, -1):
+        glow_r = thumb_radius + i * 3
+        alpha = 25 + i * 20
+        draw.ellipse(
+            (progress_x - glow_r, thumb_y - glow_r, progress_x + glow_r, thumb_y + glow_r),
+            fill=(*palette[2], alpha)
+        )
+
+    # Thumb core
     draw.ellipse(
-        [(thumb_x - TR, cy - TR), (thumb_x + TR, cy + TR)],
+        (progress_x - thumb_radius, thumb_y - thumb_radius, progress_x + thumb_radius, thumb_y + thumb_radius),
         fill=(255, 255, 255, 250)
     )
-    # inner coloured core
     draw.ellipse(
-        [(thumb_x - TR + 3, cy - TR + 3), (thumb_x + TR - 3, cy + TR - 3)],
-        fill=(min(255, r2 + 100), min(255, g2 + 100), min(255, b2 + 100), 200)
+        (progress_x - thumb_radius + 3, thumb_y - thumb_radius + 3, progress_x + thumb_radius - 3, thumb_y + thumb_radius - 3),
+        fill=(*palette[2], 220)
     )
 
-    return thumb_x
+
+def draw_gradient_overlay(size, top_color, bottom_color):
+    """Create a smooth gradient overlay."""
+    gradient = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(gradient)
+    h = size[1]
+
+    for y in range(h):
+        t = y / h
+        r = int(top_color[0] * (1 - t) + bottom_color[0] * t)
+        g = int(top_color[1] * (1 - t) + bottom_color[1] * t)
+        b = int(top_color[2] * (1 - t) + bottom_color[2] * t)
+        a = int(30 + t * 180)
+        draw.line([(0, y), (size[0], y)], fill=(r, g, b, a))
+
+    return gradient
 
 
-# ── main function ─────────────────────────────────────────────────────────────
+# ── Main Thumbnail Generator ──────────────────────────────────────────────────
 
 async def get_thumb(videoid, user_id, title=None, duration=None, thumbnail=None,
                     views=None, channel=None):
     """
-    Generate a styled now-playing thumbnail.
+    Generate a premium neon-styled now-playing thumbnail.
 
-    Called as:
-      get_thumb(videoid, user_id)                            – auto-fetches details
-      get_thumb(videoid, user_id, title=, duration=, ...)   – uses provided details
+    The design features:
+    - Dynamic color extraction from cover art
+    - Multi-layered neon glow borders
+    - Glassmorphism effects
+    - Particle backgrounds
+    - Professional typography layout
     """
     if os.path.isfile(f"cache/{videoid}_{user_id}.png"):
         return f"cache/{videoid}_{user_id}.png"
 
     try:
-        # ── fetch song details if not already provided ────────────────────
+        # ── Fetch song details if not provided ──────────────────────────
         if not title or not thumbnail:
-            url     = f"https://www.youtube.com/watch?v={videoid}"
+            url = f"https://www.youtube.com/watch?v={videoid}"
             results = VideosSearch(url, limit=1)
             for result in (await results.next())["result"]:
                 try:
                     title = result["title"]
                     title = re.sub(r"\W+", " ", title).title()
                 except:
-                    title = "Unsupported Title"
+                    title = "Untitled Track"
                 try:
                     duration = result["duration"]
                 except:
-                    duration = "Unknown"
+                    duration = "??:??"
                 thumbnail = result["thumbnails"][0]["url"].split("?")[0]
                 try:
                     views = result["viewCount"]["short"]
                 except:
-                    views = "Unknown Views"
+                    views = "Unknown"
                 try:
                     channel = result["channel"]["name"]
                 except:
                     channel = "Unknown Channel"
         else:
-            title    = re.sub(r"\W+", " ", str(title)).title()
-            duration = duration or "Unknown"
-            views    = views    or "Unknown Views"
-            channel  = channel  or "Unknown Channel"
+            title = re.sub(r"\W+", " ", str(title)).title()
+            duration = duration or "??:??"
+            views = views or "Unknown"
+            channel = channel or "Unknown Channel"
 
-        # ── download thumbnail ────────────────────────────────────────────
+        # ── Download cover art ──────────────────────────────────────────
         async with aiohttp.ClientSession() as session:
             async with session.get(thumbnail) as resp:
                 if resp.status == 200:
@@ -308,224 +308,331 @@ async def get_thumb(videoid, user_id, title=None, duration=None, thumbnail=None,
                     await f.close()
 
         # ═════════════════════════════════════════════════════════════════
-        # WORK AT 2× RESOLUTION → downsample at end for anti-aliasing
-        # This gives much crisper text, borders and thumbnail quality.
+        # CANVAS SETUP (2X resolution for sharp output)
         # ═════════════════════════════════════════════════════════════════
-        SCALE    = 2
-        W, H     = 1280 * SCALE, 720 * SCALE
+        SCALE = 2
+        W, H = 2560, 1440  # 1280x720 × 2
 
-        # Layout (in full-res coords)
-        BOTTOM_H = 185 * SCALE    # taller bar (was 150)
-        CZ_H     = H - BOTTOM_H  # cover zone height
+        # Canvas background (dark base)
+        canvas = Image.new("RGBA", (W, H), (8, 5, 18, 255))
 
-        canvas = Image.new("RGBA", (W, H), (10, 6, 22, 255))
-
-        # ── blurred cover background ──────────────────────────────────────
+        # ── Load and process cover art ──────────────────────────────────
         cover_raw = Image.open(f"cache/thumb{videoid}.png").convert("RGBA")
-        # Enhance the source image sharpness/colour before using it
-        cover_raw = ImageEnhance.Sharpness(cover_raw).enhance(1.4)
-        cover_raw = ImageEnhance.Color(cover_raw).enhance(1.3)
+        cover_raw = ImageEnhance.Sharpness(cover_raw).enhance(1.5)
+        cover_raw = ImageEnhance.Color(cover_raw).enhance(1.4)
+        cover_raw = ImageEnhance.Contrast(cover_raw).enhance(1.2)
 
-        dominant  = get_dominant_color(cover_raw)
-        palette   = build_palette(dominant)
-        r_d, g_d, b_d = dominant
+        # Extract vibrant palette
+        palette = get_vibrant_palette(cover_raw)
+        dominant = palette[0]
 
-        cover_bg = cover_raw.resize((W, CZ_H), Image.LANCZOS).convert("RGBA")
-        cover_bg = cover_bg.filter(ImageFilter.GaussianBlur(28 * SCALE // 2))
-        cover_bg = Image.alpha_composite(
-            cover_bg, Image.new("RGBA", (W, CZ_H), (0, 0, 0, 140))
-        )
-        canvas.paste(cover_bg, (0, 0))
+        # ── Background layer (blurred cover) ────────────────────────────
+        bg_layer = cover_raw.copy()
+        bg_layer = bg_layer.resize((W, H), Image.LANCZOS)
+        bg_layer = bg_layer.filter(ImageFilter.GaussianBlur(radius=40))
+        bg_darken = Image.new("RGBA", (W, H), (0, 0, 0, 160))
+        bg_layer = Image.alpha_composite(bg_layer, bg_darken)
+        canvas.paste(bg_layer, (0, 0))
 
-        # gradient fade at bottom of cover zone
-        fade = Image.new("RGBA", (W, 130 * SCALE), (0, 0, 0, 0))
-        for row in range(130 * SCALE):
-            a = int((row / (130 * SCALE)) ** 1.5 * 240)
-            ImageDraw.Draw(fade).line([(0, row), (W, row)], fill=(10, 6, 22, a))
-        canvas.alpha_composite(fade, (0, CZ_H - 65 * SCALE))
+        # ── Particle effect ─────────────────────────────────────────────
+        particles = draw_particle_background((W, H), palette)
+        canvas = Image.alpha_composite(canvas, particles)
 
-        # ── bottom bar ────────────────────────────────────────────────────
-        bar_r = max(0, r_d - 160)
-        bar_g = max(0, g_d - 160)
-        bar_b = max(0, b_d - 150)
-        bar   = Image.new("RGBA", (W, BOTTOM_H + 20 * SCALE), (bar_r, bar_g, bar_b, 240))
-        bar   = Image.alpha_composite(
-            bar, Image.new("RGBA", (W, BOTTOM_H + 20 * SCALE), (0, 0, 0, 80))
-        )
-        canvas.alpha_composite(bar, (0, CZ_H - 16 * SCALE))
-
-        # ── centre cover art – bigger, nudged down into centre of cover zone ──
-        CV_W    = 390 * SCALE   # wider (was 340)
-        CV_H    = 320 * SCALE   # taller (was 280)
-        CV_LEFT = (W - CV_W) // 2
-        # +30*SCALE moves it down from the zone midpoint toward the bar
-        CV_TOP  = (CZ_H - CV_H) // 2 + 30 * SCALE
-
-        cover_sq = cover_raw.resize((CV_W, CV_H), Image.LANCZOS).convert("RGBA")
-        # Extra sharpness on the displayed cover
-        cover_sq = ImageEnhance.Sharpness(cover_sq).enhance(1.5)
-        cover_sq = ImageEnhance.Contrast(cover_sq).enhance(1.1)
-        rc_mask  = Image.new("L", (CV_W, CV_H), 0)
-        ImageDraw.Draw(rc_mask).rounded_rectangle(
-            [(0, 0), (CV_W, CV_H)], radius=22 * SCALE, fill=255
-        )
-        cover_sq.putalpha(rc_mask)
-
-        # drop shadow
-        sh_w, sh_h = CV_W + 80 * SCALE, CV_H + 80 * SCALE
-        shadow     = Image.new("RGBA", (sh_w, sh_h), (0, 0, 0, 0))
-        ImageDraw.Draw(shadow).rounded_rectangle(
-            [(24 * SCALE, 24 * SCALE), (sh_w - 24 * SCALE, sh_h - 24 * SCALE)],
-            radius=30 * SCALE, fill=(r_d // 2, g_d // 2, b_d // 2, 180)
-        )
-        shadow = shadow.filter(ImageFilter.GaussianBlur(22 * SCALE // 2))
-        canvas.alpha_composite(shadow, (CV_LEFT - 40 * SCALE, CV_TOP - 40 * SCALE))
-        canvas.alpha_composite(cover_sq, (CV_LEFT, CV_TOP))
-
-        # neon ring around cover art — same colour as outer border
-        ring_pad   = 10 * SCALE
-        ring_layer = make_neon_glow_border(
+        # ── Gradient overlay ────────────────────────────────────────────
+        gradient = draw_gradient_overlay(
             (W, H),
-            (CV_LEFT - ring_pad, CV_TOP - ring_pad,
-             CV_LEFT + CV_W + ring_pad, CV_TOP + CV_H + ring_pad),
-            dominant, radius=28 * SCALE, stroke=5 * SCALE, glow_layers=10
+            (dominant[0], dominant[1], dominant[2]),
+            (0, 0, 0)
         )
-        canvas.alpha_composite(ring_layer)
+        canvas = Image.alpha_composite(canvas, gradient)
 
-        # ── outer card border – thin glowing neon, colour from song ──────────
-        border_layer = make_neon_glow_border(
-            (W, H), (6 * SCALE, 6 * SCALE, W - 6 * SCALE, H - 6 * SCALE),
-            dominant, radius=30 * SCALE, stroke=5 * SCALE, glow_layers=12
+        # ── Center Album Art (with glassmorphism effect) ─────────────────
+        ART_SIZE = 480 * SCALE // 2  # 480px at final resolution
+        art_x = (W - ART_SIZE) // 2
+        art_y = (H - ART_SIZE) // 2 - 40 * SCALE // 2
+
+        # Glass backdrop behind album art
+        glass_pad = 20 * SCALE // 2
+        glass_bg = Image.new("RGBA", (ART_SIZE + glass_pad * 2, ART_SIZE + glass_pad * 2), (0, 0, 0, 0))
+        gb_draw = ImageDraw.Draw(glass_bg)
+        gb_draw.rounded_rectangle(
+            [(0, 0), (ART_SIZE + glass_pad * 2, ART_SIZE + glass_pad * 2)],
+            radius=28 * SCALE // 2,
+            fill=(255, 255, 255, 25)
         )
-        canvas.alpha_composite(border_layer)
-
-        # ── "NOW PLAYING" badge (top-left) ───────────────────────────────
-        BW, BH = 210 * SCALE, 42 * SCALE
-        badge  = Image.new("RGBA", (BW, BH), (0, 0, 0, 0))
-        p0     = palette[0]
-        ImageDraw.Draw(badge).rounded_rectangle(
-            [(0, 0), (BW, BH)],
-            radius=BH // 2,
-            fill=(max(0, p0[0] - 80), max(0, p0[1] - 80), max(0, p0[2] - 80), 210),
-            outline=(min(255, p0[0] + 100), min(255, p0[1] + 100), min(255, p0[2] + 100), 220),
-            width=3 * SCALE // 2
+        canvas.alpha_composite(
+            glass_bg,
+            (art_x - glass_pad, art_y - glass_pad)
         )
-        canvas.alpha_composite(badge, (28 * SCALE, 26 * SCALE))
 
-        # ── Bot name badge (top-right, same style & height) ───────────────
-        bot_name  = unidecode(app.name)[:18]   # truncate if very long
-        # measure text width to size the badge dynamically
+        # Album art shadow
+        shadow = Image.new("RGBA", (ART_SIZE + 40, ART_SIZE + 40), (0, 0, 0, 0))
+        sd_draw = ImageDraw.Draw(shadow)
+        sd_draw.rounded_rectangle(
+            [(20, 20), (ART_SIZE + 20, ART_SIZE + 20)],
+            radius=24 * SCALE // 2,
+            fill=(dominant[0] // 3, dominant[1] // 3, dominant[2] // 3, 180)
+        )
+        shadow = shadow.filter(ImageFilter.GaussianBlur(20))
+        canvas.alpha_composite(shadow, (art_x - 20, art_y - 20))
+
+        # Album art itself
+        art_img = cover_raw.resize((ART_SIZE, ART_SIZE), Image.LANCZOS)
+        art_img = ImageEnhance.Sharpness(art_img).enhance(1.8)
+        art_img = ImageEnhance.Contrast(art_img).enhance(1.3)
+        art_mask = Image.new("L", (ART_SIZE, ART_SIZE), 0)
+        ImageDraw.Draw(art_mask).rounded_rectangle(
+            [(0, 0), (ART_SIZE, ART_SIZE)],
+            radius=22 * SCALE // 2,
+            fill=255
+        )
+        art_img.putalpha(art_mask)
+        canvas.alpha_composite(art_img, (art_x, art_y))
+
+        # ── Neon border around album art ─────────────────────────────────
+        neon_border = create_neon_glow(
+            (W, H),
+            (art_x - 8, art_y - 8, art_x + ART_SIZE + 8, art_y + ART_SIZE + 8),
+            palette[1],  # Second color for contrast
+            radius=26 * SCALE // 2,
+            width=5 * SCALE // 2,
+            intensity=12
+        )
+        canvas = Image.alpha_composite(canvas, neon_border)
+
+        # ── Outer card neon border ──────────────────────────────────────
+        outer_border = create_neon_glow(
+            (W, H),
+            (10, 10, W - 10, H - 10),
+            dominant,
+            radius=40,
+            width=4 * SCALE // 2,
+            intensity=10
+        )
+        canvas = Image.alpha_composite(canvas, outer_border)
+
+        # ── Now Playing Badge (Top Left) ────────────────────────────────
+        badge_w = 280 * SCALE // 2
+        badge_h = 56 * SCALE // 2
+        badge_x = 40 * SCALE // 2
+        badge_y = 30 * SCALE // 2
+
+        badge = Image.new("RGBA", (badge_w, badge_h), (0, 0, 0, 0))
+        bd_draw = ImageDraw.Draw(badge)
+
+        # Glass badge background
+        bd_draw.rounded_rectangle(
+            [(0, 0), (badge_w, badge_h)],
+            radius=badge_h // 2,
+            fill=(10, 8, 25, 200)
+        )
+
+        # Badge neon outline
+        for i in range(3, 0, -1):
+            alpha = 30 + i * 25
+            bd_draw.rounded_rectangle(
+                (i, i, badge_w - i, badge_h - i),
+                radius=badge_h // 2,
+                outline=(*palette[0], alpha),
+                width=2
+            )
+
+        canvas.alpha_composite(badge, (badge_x, badge_y))
+
+        # ── Bot Name Badge (Top Right) ──────────────────────────────────
+        bot_name = unidecode(app.name)[:20]
         try:
-            font_badge_tmp = ImageFont.truetype("AnonXMusic/assets/font2.ttf", 18 * SCALE)
-            txt_w = font_badge_tmp.getlength(bot_name)
+            bot_font = ImageFont.truetype("AnonXMusic/assets/font2.ttf", 20 * SCALE // 2)
+            bot_w = int(bot_font.getlength(bot_name)) + 40 * SCALE // 2
         except:
-            txt_w = len(bot_name) * 11 * SCALE
-        RBW = int(txt_w) + 36 * SCALE   # padding on each side
-        RBH = BH
-        rbadge = Image.new("RGBA", (RBW, RBH), (0, 0, 0, 0))
-        ImageDraw.Draw(rbadge).rounded_rectangle(
-            [(0, 0), (RBW, RBH)],
-            radius=RBH // 2,
-            fill=(max(0, p0[0] - 80), max(0, p0[1] - 80), max(0, p0[2] - 80), 210),
-            outline=(min(255, p0[0] + 100), min(255, p0[1] + 100), min(255, p0[2] + 100), 220),
-            width=3 * SCALE // 2
-        )
-        # Place at same Y as NOW PLAYING badge, flush to right edge
-        RB_X = W - RBW - 28 * SCALE
-        RB_Y = 26 * SCALE
-        canvas.alpha_composite(rbadge, (RB_X, RB_Y))
+            bot_font = ImageFont.load_default()
+            bot_w = len(bot_name) * 12 + 40
 
-        # ── fonts (scaled) ────────────────────────────────────────────────
+        bot_badge = Image.new("RGBA", (bot_w, badge_h), (0, 0, 0, 0))
+        bb_draw = ImageDraw.Draw(bot_badge)
+        bb_draw.rounded_rectangle(
+            [(0, 0), (bot_w, badge_h)],
+            radius=badge_h // 2,
+            fill=(10, 8, 25, 200)
+        )
+        for i in range(3, 0, -1):
+            alpha = 30 + i * 25
+            bb_draw.rounded_rectangle(
+                (i, i, bot_w - i, badge_h - i),
+                radius=badge_h // 2,
+                outline=(*palette[2], alpha),
+                width=2
+            )
+
+        bot_x = W - bot_w - 40 * SCALE // 2
+        bot_y = 30 * SCALE // 2
+        canvas.alpha_composite(bot_badge, (bot_x, bot_y))
+
+        # ── Typography ──────────────────────────────────────────────────
         try:
-            font_bold  = ImageFont.truetype("AnonXMusic/assets/font2.ttf", 32 * SCALE)
-            font_badge = ImageFont.truetype("AnonXMusic/assets/font2.ttf", 18 * SCALE)
-            font_small = ImageFont.truetype("AnonXMusic/assets/font.ttf",  24 * SCALE)
-            font_dur   = ImageFont.truetype("AnonXMusic/assets/font.ttf",  22 * SCALE)
+            font_title = ImageFont.truetype("AnonXMusic/assets/font2.ttf", 44 * SCALE // 2)
+            font_info = ImageFont.truetype("AnonXMusic/assets/font.ttf", 26 * SCALE // 2)
+            font_badge_text = ImageFont.truetype("AnonXMusic/assets/font2.ttf", 22 * SCALE // 2)
+            font_time = ImageFont.truetype("AnonXMusic/assets/font.ttf", 24 * SCALE // 2)
         except:
-            font_bold = font_badge = font_small = font_dur = ImageFont.load_default()
+            font_title = font_info = font_badge_text = font_time = ImageFont.load_default()
 
         draw = ImageDraw.Draw(canvas)
 
-        # badge texts
+        # Badge text - Now Playing
         draw.text(
-            (48 * SCALE, 34 * SCALE),
-            "NOW PLAYING",
-            fill=(230, 235, 255, 245),
-            font=font_badge
+            (badge_x + 50 * SCALE // 2, badge_y + 12 * SCALE // 2),
+            "🎵 NOW PLAYING",
+            fill=(255, 255, 255, 250),
+            font=font_badge_text
         )
-        # bot name badge text — centred inside the right badge
+
+        # Badge text - Bot name
         draw.text(
-            (RB_X + 18 * SCALE, RB_Y + (RBH - font_badge.size) // 2),
+            (bot_x + 20 * SCALE // 2, bot_y + 14 * SCALE // 2),
             bot_name,
-            fill=(230, 235, 255, 245),
-            font=font_badge
+            fill=(255, 255, 255, 250),
+            font=font_badge_text
         )
 
-        # ═══════════════════════════════════════════════════════════════════
-        # BOTTOM BAR (taller = more breathing room)
-        #
-        #  [icon]  Song Title (bold, large)
-        #          Played by: BotName  ·  Channel
-        #          ════════════════●═══════════════
-        #          00:00                      4:29
-        # ═══════════════════════════════════════════════════════════════════
-        BAR_Y     = CZ_H - 16 * SCALE
-        IS        = 118 * SCALE   # icon size
-        ICON_X    = 52 * SCALE    # shifted right (was 24) for better alignment
-        ICON_Y    = BAR_Y + (BOTTOM_H - IS) // 2
+        # ── Song Info Layout (Bottom Section) ───────────────────────────
+        # Position below album art
+        info_y = art_y + ART_SIZE + 30 * SCALE // 2
+        info_x = art_x
 
-        # icon
-        icon_img = cover_raw.resize((IS, IS), Image.LANCZOS).convert("RGBA")
-        icon_img = ImageEnhance.Sharpness(icon_img).enhance(1.3)
-        ic_mask  = Image.new("L", (IS, IS), 0)
-        ImageDraw.Draw(ic_mask).rounded_rectangle(
-            [(0, 0), (IS, IS)], radius=16 * SCALE, fill=255
-        )
-        icon_img.putalpha(ic_mask)
-        canvas.alpha_composite(icon_img, (ICON_X, ICON_Y))
-
-        # text columns
-        TEXT_X  = ICON_X + IS + 22 * SCALE
-        LINE1_Y = BAR_Y + 16 * SCALE                          # title
-        LINE2_Y = BAR_Y + 16 * SCALE + 38 * SCALE            # subtitle
-
-        draw.text((TEXT_X, LINE1_Y), clear(title, 40),
-                  fill=(255, 255, 255, 250), font=font_bold)
+        # Title with glow
+        title_text = clear(title, 45)
+        # Title shadow/glow
+        for ox, oy in [(2, 2), (-1, -1), (1, -1), (-1, 1)]:
+            draw.text(
+                (info_x + ox, info_y + oy),
+                title_text,
+                fill=(*palette[0], 100),
+                font=font_title
+            )
+        # Title main
         draw.text(
-            (TEXT_X, LINE2_Y),
-            f"Played by: {unidecode(app.name)}  ·  {channel[:32]}",
-            fill=(175, 180, 215, 195),
-            font=font_small
+            (info_x, info_y),
+            title_text,
+            fill=(255, 255, 255, 255),
+            font=font_title
         )
 
-        # ── progress bar (colour-matched to border palette) ───────────────
-        PROG_X0  = TEXT_X
-        PROG_X1  = W - 32 * SCALE
-        BAR_H_PX = 8 * SCALE
-        PROG_Y   = BAR_Y + BOTTOM_H - 52 * SCALE   # neat gap from bar bottom
-        TIME_Y   = PROG_Y + BAR_H_PX + 8 * SCALE
-
-        draw_glowing_progress_bar(
-            draw, canvas,
-            PROG_X0, PROG_Y, PROG_X1, BAR_H_PX,
-            thumb_frac=0.65,
-            palette=palette
+        # Artist/Channel info
+        info_y2 = info_y + 60 * SCALE // 2
+        channel_text = f"🎙️ {channel}"
+        draw.text(
+            (info_x, info_y2),
+            channel_text,
+            fill=(200, 200, 230, 230),
+            font=font_info
         )
 
-        # time labels – same Y, anchored to bar edges
-        draw.text((PROG_X0,          TIME_Y), "00:00",       fill=(195, 200, 230, 210), font=font_dur)
-        draw.text((PROG_X1 - 74 * SCALE, TIME_Y), duration[:7], fill=(195, 200, 230, 210), font=font_dur)
+        # Views
+        views_text = f"👁️ {views} views"
+        try:
+            views_w = int(font_info.getlength(views_text))
+        except:
+            views_w = len(views_text) * 14
+        draw.text(
+            (info_x + 300 * SCALE // 2, info_y2),
+            views_text,
+            fill=(200, 200, 230, 230),
+            font=font_info
+        )
 
-        # ── downsample to final 1280×720 for crisp anti-aliased output ────
+        # ── Progress Bar ────────────────────────────────────────────────
+        prog_y = info_y2 + 50 * SCALE // 2
+        prog_x0 = info_x
+        prog_x1 = info_x + 600 * SCALE // 2
+        prog_h = 10 * SCALE // 2
+
+        draw_glowing_progress(
+            draw, (W, H),
+            prog_x0, prog_y, prog_x1, prog_h,
+            0.55,  # Progress percentage
+            palette
+        )
+
+        # ── Duration timestamps ─────────────────────────────────────────
+        time_y = prog_y + prog_h + 15 * SCALE // 2
+        start_time = "0:00"
+        draw.text(
+            (prog_x0, time_y),
+            start_time,
+            fill=(180, 185, 210, 220),
+            font=font_time
+        )
+
+        duration_text = duration if duration else "0:00"
+        try:
+            dur_w = int(font_time.getlength(duration_text))
+        except:
+            dur_w = len(duration_text) * 12
+        draw.text(
+            (prog_x1 - dur_w, time_y),
+            duration_text,
+            fill=(180, 185, 210, 220),
+            font=font_time
+        )
+
+        # ── Small album art thumbnail in bottom-left info ───────────────
+        mini_size = 90 * SCALE // 2
+        mini_x = prog_x0
+        mini_y = time_y + 40 * SCALE // 2
+        mini_art = cover_raw.resize((mini_size, mini_size), Image.LANCZOS)
+        mini_mask = Image.new("L", (mini_size, mini_size), 0)
+        ImageDraw.Draw(mini_mask).rounded_rectangle(
+            [(0, 0), (mini_size, mini_size)],
+            radius=12 * SCALE // 2,
+            fill=255
+        )
+        mini_art.putalpha(mini_mask)
+
+        # Mini art neon border
+        mini_border = create_neon_glow(
+            (W, H),
+            (mini_x - 4, mini_y - 4, mini_x + mini_size + 4, mini_y + mini_size + 4),
+            palette[3],
+            radius=14 * SCALE // 2,
+            width=3 * SCALE // 2,
+            intensity=6
+        )
+        canvas = Image.alpha_composite(canvas, mini_border)
+        canvas.alpha_composite(mini_art, (mini_x, mini_y))
+
+        # ── Bot watermark next to mini art ───────────────────────────────
+        watermark_text = f"Powered by {unidecode(app.name)}"
+        try:
+            water_y = mini_y + mini_size // 2 - 12 * SCALE // 2
+            draw.text(
+                (mini_x + mini_size + 16 * SCALE // 2, water_y),
+                watermark_text,
+                fill=(150, 155, 180, 200),
+                font=font_info
+            )
+        except:
+            pass
+
+        # ═════════════════════════════════════════════════════════════════
+        # FINAL OUTPUT
+        # ═════════════════════════════════════════════════════════════════
         final = canvas.convert("RGB").resize((1280, 720), Image.LANCZOS)
 
+        # Clean up temp file
         try:
             os.remove(f"cache/thumb{videoid}.png")
         except:
             pass
 
-        final.save(f"cache/{videoid}_{user_id}.png", quality=97, optimize=False)
+        # Save with high quality
+        final.save(f"cache/{videoid}_{user_id}.png", quality=100, optimize=True)
         return f"cache/{videoid}_{user_id}.png"
 
-    except Exception:
+    except Exception as e:
+        print(f"Thumbnail generation error: {e}")
+        try:
+            os.remove(f"cache/thumb{videoid}.png")
+        except:
+            pass
         return YOUTUBE_IMG_URL
