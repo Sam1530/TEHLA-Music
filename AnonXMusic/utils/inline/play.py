@@ -30,28 +30,30 @@ def track_markup(_, videoid, user_id, channel, fplay):
 def stream_markup_timer(_, chat_id, played, dur):
     played_sec = time_to_seconds(played)
     duration_sec = time_to_seconds(dur)
-    percentage = (played_sec / duration_sec) * 100
-    umm = math.floor(percentage)
-    if 0 < umm <= 10:
-        bar = "◉—————————"
-    elif 10 < umm < 20:
-        bar = "—◉————————"
-    elif 20 <= umm < 30:
-        bar = "——◉———————"
-    elif 30 <= umm < 40:
-        bar = "———◉——————"
-    elif 40 <= umm < 50:
-        bar = "————◉—————"
-    elif 50 <= umm < 60:
-        bar = "—————◉————"
-    elif 60 <= umm < 70:
-        bar = "——————◉———"
-    elif 70 <= umm < 80:
-        bar = "———————◉——"
-    elif 80 <= umm < 95:
-        bar = "————————◉—"
+
+    # Safety check
+    if duration_sec == 0:
+        bar = "🎧 ──────────"
     else:
-        bar = "—————————◉"
+        percentage = (played_sec / duration_sec) * 100
+        umm = math.floor(percentage)
+
+        # Convert percentage → 0 to 10 scale
+        progress = int(umm / 10)
+        progress = max(0, min(progress, 10))
+
+        # Wave symbols
+        waves = ["▁", "▂", "▃", "▄", "▅", "▆", "▇"]
+
+        # Build wave part
+        wave_part = "".join(waves[i % len(waves)] for i in range(progress))
+
+        # Remaining bar
+        remaining = "─" * (10 - progress)
+
+        # Final bar
+        bar = f"{wave_part}🎧{remaining}"
+
     buttons = [
         [
             InlineKeyboardButton(
