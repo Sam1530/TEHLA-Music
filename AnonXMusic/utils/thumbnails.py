@@ -85,6 +85,19 @@ def blend_colors(color1, color2, ratio=0.5):
         for c1, c2 in zip(color1, color2)
     )
 
+def draw_rounded_rect_with_border(draw, bbox, radius, fill, outline, outline_width):
+    """Helper to draw rounded rectangle with border"""
+    # Draw fill
+    draw.rounded_rectangle(bbox, radius=radius, fill=fill)
+    # Draw outline
+    if outline_width > 0:
+        for i in range(outline_width):
+            draw.rounded_rectangle(
+                (bbox[0] - i, bbox[1] - i, bbox[2] + i, bbox[3] + i),
+                radius=radius + i,
+                outline=outline
+            )
+
 # ================= PROFESSIONAL VISUAL EFFECTS =================
 
 def create_gradient_background(width, height, color1, color2, angle=0):
@@ -294,7 +307,7 @@ def create_spotify_nav_button(size=44, direction="prev"):
     draw.ellipse(
         (2, 2, size - 2, size - 2),
         outline=(255, 255, 255, 25),
-        width=1.5
+        width=2  # Fixed: Changed from 1.5 to 2
     )
     
     if direction == "prev":
@@ -305,7 +318,7 @@ def create_spotify_nav_button(size=44, direction="prev"):
         
         # Vertical bar
         draw.rectangle(
-            (bar_x - 1.5, center - tri_h, bar_x + 1.5, center + tri_h),
+            (bar_x - 1, center - tri_h, bar_x + 1, center + tri_h),
             fill=(255, 255, 255, 200)
         )
         
@@ -326,7 +339,7 @@ def create_spotify_nav_button(size=44, direction="prev"):
         
         # Vertical bar
         draw.rectangle(
-            (bar_x - 1.5, center - tri_h, bar_x + 1.5, center + tri_h),
+            (bar_x - 1, center - tri_h, bar_x + 1, center + tri_h),
             fill=(255, 255, 255, 200)
         )
         
@@ -357,7 +370,8 @@ def create_shuffle_button(size=40):
         (size - offset - 5, offset + 5),
         (offset + 3, size - offset - 3)
     ]
-    draw.line(points1[:2], fill=arrow_color, width=2)
+    draw.line([points1[0], points1[1]], fill=arrow_color, width=2)
+    draw.line([points1[2], points1[3]], fill=arrow_color, width=2)
     
     # Arrow 2 (down-right)
     points2 = [
@@ -366,7 +380,23 @@ def create_shuffle_button(size=40):
         (size - offset - 5, size - offset - 5),
         (offset + 3, offset + 3)
     ]
-    draw.line(points2[:2], fill=arrow_color, width=2)
+    draw.line([points2[0], points2[1]], fill=arrow_color, width=2)
+    draw.line([points2[2], points2[3]], fill=arrow_color, width=2)
+    
+    # Arrowheads
+    # Arrow 1 head
+    draw.polygon([
+        (size - offset, offset),
+        (size - offset - 8, offset + 3),
+        (size - offset - 3, offset + 8)
+    ], fill=arrow_color)
+    
+    # Arrow 2 head
+    draw.polygon([
+        (size - offset, size - offset),
+        (size - offset - 8, size - offset - 3),
+        (size - offset - 3, size - offset - 8)
+    ], fill=arrow_color)
     
     return btn
 
@@ -377,16 +407,25 @@ def create_repeat_button(size=40):
     center = size // 2
     
     # Circular arrows
-    bbox = (center - 8, center - 12, center + 8, center + 12)
+    bbox = (center - 10, center - 14, center + 10, center + 14)
     draw.arc(bbox, 45, 315, fill=(255, 255, 255, 180), width=2)
     
     # Arrow head
-    arrow_pos = (bbox[2], bbox[2] - 5)
+    arrow_x = bbox[2]
+    arrow_y = bbox[1] + 8
     draw.polygon([
-        (arrow_pos[0] + 3, arrow_pos[1] - 5),
-        (arrow_pos[0] - 5, arrow_pos[1]),
-        (arrow_pos[0] + 3, arrow_pos[1] + 5)
+        (arrow_x + 5, arrow_y - 5),
+        (arrow_x - 5, arrow_y),
+        (arrow_x + 5, arrow_y + 5)
     ], fill=(255, 255, 255, 180))
+    
+    # Small dot
+    dot_size = 3
+    draw.ellipse(
+        (center - dot_size, center - dot_size - 8, 
+         center + dot_size, center + dot_size - 8),
+        fill=(255, 255, 255, 100)
+    )
     
     return btn
 
@@ -656,8 +695,11 @@ async def get_thumb(videoid, user_id=None):
         canvas = Image.alpha_composite(canvas, particles)
         
         # Noise overlay for premium texture
-        noise = create_noise_overlay(CANVAS_SIZE, 3)
-        canvas = Image.alpha_composite(canvas, noise)
+        try:
+            noise = create_noise_overlay(CANVAS_SIZE, 3)
+            canvas = Image.alpha_composite(canvas, noise)
+        except:
+            pass  # Skip noise if it causes issues
         
         # ===== PROCESS COVER ART ====
         cover = cover_img.resize((COVER_SIZE, COVER_SIZE), Image.LANCZOS)
@@ -779,7 +821,13 @@ async def get_thumb(videoid, user_id=None):
         
         # Verified badge
         badge_size = 20
-        badge_x = RIGHT_START_X + draw.textlength(artist_text, font=artist_font) + 10
+        try:
+            artist_text_width = draw.textlength(artist_text, font=artist_font)
+        except:
+            artist_bbox = draw.textbbox((0, 0), artist_text, font=artist_font)
+            artist_text_width = artist_bbox[2] - artist_bbox[0]
+        
+        badge_x = RIGHT_START_X + int(artist_text_width) + 10
         badge_y = ARTIST_Y + 8
         
         # Simple checkmark circle
@@ -808,13 +856,14 @@ async def get_thumb(videoid, user_id=None):
         if ":" in duration:
             time_parts = duration.split(":")
             if len(time_parts) == 2:
-                minutes, seconds = time_parts
-                current_duration = int(minutes) * 60 + int(seconds)
-                # Show 30% progress for preview
-                progress_value = min(0.3, current_duration / (current_duration + 180))
-                current_time = f"{int(current_duration * progress_value // 60)}:{int(current_duration * progress_value % 60):02d}"
-            else:
-                current_time = "0:00"
+                try:
+                    minutes, seconds = time_parts
+                    current_duration = int(minutes) * 60 + int(seconds)
+                    # Show 30% progress for preview
+                    progress_value = min(0.3, current_duration / (current_duration + 180))
+                    current_time = f"{int(current_duration * progress_value // 60)}:{int(current_duration * progress_value % 60):02d}"
+                except:
+                    current_time = "0:00"
         
         progress_bar = create_spotify_progress_bar(
             RIGHT_WIDTH, 6, 0.3, current_time, duration
@@ -822,13 +871,23 @@ async def get_thumb(videoid, user_id=None):
         canvas.alpha_composite(progress_bar, (RIGHT_START_X, PROGRESS_Y))
         
         # ===== SPOTIFY-STYLE CONTROLS =====
-        controls = create_spotify_controls()
-        controls_x = RIGHT_START_X + (RIGHT_WIDTH - 350) // 2
-        controls_y = CONTROLS_Y
-        canvas.alpha_composite(controls, (controls_x, controls_y))
+        try:
+            controls = create_spotify_controls()
+            controls_x = RIGHT_START_X + (RIGHT_WIDTH - 350) // 2
+            controls_y = CONTROLS_Y
+            canvas.alpha_composite(controls, (controls_x, controls_y))
+        except Exception as e:
+            print(f"[Thumbnail] Error creating controls: {e}")
+            # Fallback to simple text if controls fail
+            draw.text(
+                (RIGHT_START_X + RIGHT_WIDTH // 4, CONTROLS_Y + 30),
+                "⏮  ▶  ⏭",
+                font=title_font,
+                fill=WHITE
+            )
         
         # ===== VOLUME BAR (BOTTOM) =====
-        volume_y = controls_y + 130
+        volume_y = CONTROLS_Y + 130
         volume_width = 120
         
         # Volume icon
@@ -869,9 +928,10 @@ async def get_thumb(videoid, user_id=None):
             fill=DARK_GRAY
         )
         
+        truncated_title = title[:20] + "..." if len(title) > 20 else title
         draw.text(
             (queue_x + 50, queue_y),
-            f"▶ {title[:20]}...",
+            f"▶ {truncated_title}",
             font=small_font,
             fill=(255, 255, 255, 100)
         )
@@ -888,7 +948,7 @@ async def get_thumb(videoid, user_id=None):
             )
         
         # ===== SIGNATURE (BOTTOM LEFT) =====
-        signature = "Made with 🤍 by @DivineDemonn"
+        signature = "Made with ❤ by @DivineDemonn"
         
         # Glow effect
         for offset in range(2, 0, -1):
