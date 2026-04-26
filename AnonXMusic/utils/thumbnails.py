@@ -19,483 +19,580 @@ from AnonXMusic import app
 CACHE_DIR = "cache"
 CANVAS_SIZE = (1280, 720)
 
-# ================= NEON PURPLE COLOR SCHEME =================
-DEEP_BG = (6, 3, 16)
-DARK_BG = (12, 8, 28)
-NEON_PURPLE = (147, 51, 234)
-NEON_PURPLE_LIGHT = (168, 85, 247)
-NEON_PURPLE_BRIGHT = (180, 105, 252)
-NEON_MAGENTA = (217, 70, 239)
-NEON_VIOLET = (139, 92, 246)
+# ================= PREMIUM NEON PURPLE COLOR SCHEME =================
+DARK_BG = (6, 2, 20)                      # Ultra deep purple-black
+NEON_PURPLE = (147, 51, 234)              # #9333EA - Vibrant purple
+NEON_PURPLE_LIGHT = (168, 85, 247)        # #A855F7 - Light purple
+NEON_PURPLE_PINK = (192, 38, 211)         # #C026D3 - Purple-pink
+NEON_MAGENTA = (217, 70, 239)             # #D946EF - Magenta
+NEON_VIOLET = (139, 92, 246)              # #8B5CF6 - Violet
+ACCENT_PURPLE = (186, 104, 200)           # Soft accent
+DEEP_PURPLE = (48, 12, 72)                # Very dark purple
 WHITE = (255, 255, 255)
-CLEAN_WHITE = (245, 245, 255)
-LIGHT_GRAY = (200, 195, 215)
-DARK_GRAY = (100, 90, 115)
-PLATINUM = (235, 230, 245)
+LIGHT_GRAY = (230, 225, 240)
+DARK_GRAY = (120, 110, 130)
+SOFT_WHITE = (245, 240, 250)
+GLASS_WHITE = (255, 255, 255, 40)
+
+# ================= SPOTIFY-STYLE BUTTON COLORS =================
+SPOTIFY_GREEN = (30, 215, 96)             # Spotify green accent
+BUTTON_BG = (40, 40, 50, 120)             # Semi-transparent button bg
+BUTTON_HOVER = (60, 55, 70, 160)          # Button hover effect
 
 # ================= LAYOUT POSITIONS =================
-COVER_SIZE = 400
-COVER_X = 50
+COVER_SIZE = 380
+COVER_X = 60
 COVER_Y = (CANVAS_SIZE[1] - COVER_SIZE) // 2
 
-RIGHT_START_X = COVER_X + COVER_SIZE + 45
-RIGHT_WIDTH = CANVAS_SIZE[0] - RIGHT_START_X - 50
+RIGHT_START_X = COVER_X + COVER_SIZE + 70
+RIGHT_WIDTH = CANVAS_SIZE[0] - RIGHT_START_X - 60
 
-# ================= TEXT POSITIONS =================
-NOW_PLAYING_Y = 100
-TITLE_Y = 170
-ARTIST_Y = 240
-PROGRESS_Y = 320
-CONTROLS_Y = 420
-BOT_NAME_Y = 540
-SIGNATURE_Y = 670
+# ================= TEXT & CONTROLS POSITIONS =================
+NOW_PLAYING_Y = 115
+TITLE_Y = 185
+ARTIST_Y = TITLE_Y + 75
+ALBUM_INFO_Y = ARTIST_Y + 50
+PROGRESS_Y = ALBUM_INFO_Y + 70
+TIME_Y = PROGRESS_Y + 50
+CONTROLS_Y = TIME_Y + 65
 
 # ================= HELPER FUNCTIONS =================
 
 def ensure_cache_dir():
+    """Ensure cache directory exists"""
     os.makedirs(CACHE_DIR, exist_ok=True)
 
 def trim_text(text, font, max_width):
+    """Trim text to fit within max_width with ellipsis"""
     try:
-        bbox = font.getbbox(text)
-        text_width = bbox[2] - bbox[0]
-        if text_width <= max_width:
+        if font.getlength(text) <= max_width:
             return text
-        while True:
+        while font.getlength(text + "…") > max_width:
             text = text[:-1]
-            bbox = font.getbbox(text + "…")
-            if (bbox[2] - bbox[0]) <= max_width:
-                return text + "…"
+        return text + "…"
     except:
-        return text[:25] + "..." if len(text) > 25 else text
+        return text[:30] + "..." if len(text) > 30 else text
 
-def create_circular_image(image, size):
-    """Create a clean circular cropped image"""
-    image = image.resize((size, size), Image.LANCZOS)
-    mask = Image.new("L", (size, size), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.ellipse((0, 0, size, size), fill=255)
+def hex_to_rgb(hex_color):
+    """Convert hex color to RGB tuple"""
+    hex_color = hex_color.lstrip('#')
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+def blend_colors(color1, color2, ratio=0.5):
+    """Blend two colors"""
+    return tuple(
+        max(0, min(255, int(c1 * (1 - ratio) + c2 * ratio)))
+        for c1, c2 in zip(color1, color2)
+    )
+
+# ================= PROFESSIONAL VISUAL EFFECTS =================
+
+def create_gradient_background(width, height, color1, color2, angle=0):
+    """Create smooth gradient background with angle support"""
+    gradient = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(gradient)
     
-    result = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    result.paste(image, (0, 0), mask)
-    return result
-
-# ================= BACKGROUND EFFECTS =================
-
-def create_background(width, height):
-    """Create clean dark gradient background"""
-    bg = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(bg)
+    for i in range(height):
+        ratio = i / height
+        # Add subtle curve to gradient
+        curve_ratio = math.sin(ratio * math.pi * 0.5)
+        r = int(color1[0] * (1 - curve_ratio) + color2[0] * curve_ratio)
+        g = int(color1[1] * (1 - curve_ratio) + color2[1] * curve_ratio)
+        b = int(color1[2] * (1 - curve_ratio) + color2[2] * curve_ratio)
+        draw.line([(0, i), (width, i)], fill=(r, g, b, 255))
     
-    for y in range(height):
-        ratio = y / height
-        r = int(DEEP_BG[0] + (DARK_BG[0] - DEEP_BG[0]) * ratio)
-        g = int(DEEP_BG[1] + (DARK_BG[1] - DEEP_BG[1]) * ratio)
-        b = int(DEEP_BG[2] + (DARK_BG[2] - DEEP_BG[2]) * ratio)
-        draw.line([(0, y), (width, y)], fill=(r, g, b, 255))
-    
-    return bg
+    return gradient
 
-def create_subtle_glow(size):
-    """Create subtle purple glow"""
+def create_radial_glow(size, color, center=None, intensity=0.08):
+    """Create elegant radial glow effect"""
+    if center is None:
+        center = (size[0] // 2, size[1] // 2)
+    
     glow = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(glow)
     
-    cx, cy = size[0] // 2 + 100, size[1] // 2
+    max_radius = int(math.sqrt(size[0]**2 + size[1]**2)) // 2
     
-    for r in range(500, 0, -50):
-        alpha = int(10 * (r / 500))
+    for radius in range(max_radius, 0, -80):
+        alpha = int(255 * intensity * (radius / max_radius) * 0.3)
         draw.ellipse(
-            (cx - r, cy - r, cx + r, cy + r),
-            outline=(*NEON_PURPLE, alpha),
+            (center[0] - radius, center[1] - radius,
+             center[0] + radius, center[1] + radius),
+            outline=(*color, min(alpha, 8)),
             width=3
         )
     
     return glow.filter(ImageFilter.GaussianBlur(40))
 
-def create_particles(size):
-    """Create subtle sparkle particles"""
+def create_noise_overlay(size, opacity=5):
+    """Add subtle noise texture for premium feel"""
+    noise = Image.new("RGBA", size, (0, 0, 0, 0))
+    pixels = noise.load()
+    
+    for x in range(size[0]):
+        for y in range(size[1]):
+            if random.random() < 0.1:
+                gray = random.randint(0, 255)
+                pixels[x, y] = (gray, gray, gray, opacity)
+    
+    return noise
+
+def create_glass_effect(size, corner_radius=20):
+    """Create glass morphism effect panel"""
+    glass = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(glass)
+    
+    # Main glass panel
+    draw.rounded_rectangle(
+        (0, 0, size[0], size[1]),
+        radius=corner_radius,
+        fill=(255, 255, 255, 8)
+    )
+    
+    # Glass border
+    draw.rounded_rectangle(
+        (0, 0, size[0], size[1]),
+        radius=corner_radius,
+        outline=(255, 255, 255, 20),
+        width=1
+    )
+    
+    # Top highlight
+    draw.rounded_rectangle(
+        (0, 0, size[0], size[1] // 2),
+        radius=corner_radius,
+        fill=(255, 255, 255, 5)
+    )
+    
+    return glass
+
+def create_particle_field(size, color, count=120):
+    """Create elegant floating particles"""
     particles = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(particles)
     random.seed(42)
     
-    for _ in range(100):
+    for _ in range(count):
         x = random.randint(0, size[0])
         y = random.randint(0, size[1])
-        r = random.randint(1, 3)
-        alpha = random.randint(15, 40)
-        draw.ellipse(
-            (x - r, y - r, x + r, y + r),
-            fill=(*NEON_PURPLE_LIGHT, alpha)
-        )
+        radius = random.randint(1, 3)
+        alpha = random.randint(10, 40)
+        
+        # Create tiny glowing dots
+        for r in range(radius, 0, -1):
+            a = alpha * (r / radius)
+            draw.ellipse(
+                (x - r, y - r, x + r, y + r),
+                fill=(*color, int(a))
+            )
     
     return particles
 
-# ================= COVER ART EFFECTS =================
-
-def create_cover_shadow():
-    """Create shadow for cover art"""
-    shadow_size = COVER_SIZE + 40
-    shadow = Image.new("RGBA", (shadow_size, shadow_size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(shadow)
+def create_cover_art_frame(size, border_width=15):
+    """Create premium cover art frame with shadow"""
+    frame = Image.new("RGBA", (size[0] + border_width * 2, size[1] + border_width * 2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(frame)
     
-    draw.rounded_rectangle(
-        (20, 20, COVER_SIZE + 20, COVER_SIZE + 20),
-        radius=25,
-        fill=(0, 0, 0, 180)
-    )
-    
-    return shadow.filter(ImageFilter.GaussianBlur(30))
-
-def create_cover_glow_border():
-    """Create neon glow border for cover"""
-    border_size = COVER_SIZE + 30
-    border = Image.new("RGBA", (border_size, border_size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(border)
-    
-    # Outer glow layers
-    for i in range(10, 0, -2):
-        alpha = int(15 * (i / 10))
+    # Shadow layers
+    for i in range(border_width, 0, -1):
+        alpha = int(30 * (i / border_width))
         draw.rounded_rectangle(
-            (i, i, border_size - i, border_size - i),
-            radius=28 + i,
-            outline=(*NEON_PURPLE, alpha),
-            width=3
+            (i, i + 5, size[0] + border_width * 2 - i, size[1] + border_width * 2 - i + 5),
+            radius=24,
+            fill=(0, 0, 0, alpha)
         )
     
-    # Main border
+    # Glow border
+    for i in range(3, 0, -1):
+        alpha = int(40 * (i / 3))
+        draw.rounded_rectangle(
+            (border_width - i, border_width - i, 
+             size[0] + border_width + i, size[1] + border_width + i),
+            radius=22 + i,
+            outline=(*NEON_PURPLE, alpha),
+            width=2
+        )
+    
+    # Inner highlight
     draw.rounded_rectangle(
-        (3, 3, border_size - 3, border_size - 3),
-        radius=26,
-        outline=(*NEON_PURPLE_LIGHT, 200),
-        width=2
-    )
-    
-    return border
-
-# ================= PROGRESS BAR =================
-
-def create_progress_bar(width, progress, color):
-    """Create clean progress bar"""
-    bar_h = 8
-    total_h = bar_h + 60
-    
-    bar_img = Image.new("RGBA", (width, total_h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(bar_img)
-    
-    bar_y = 10
-    
-    # Track background
-    draw.rounded_rectangle(
-        (0, bar_y, width, bar_y + bar_h),
-        radius=bar_h // 2,
-        fill=(255, 255, 255, 15)
-    )
-    
-    # Track outline
-    draw.rounded_rectangle(
-        (0, bar_y, width, bar_y + bar_h),
-        radius=bar_h // 2,
+        (border_width + 2, border_width + 2,
+         size[0] + border_width - 2, size[1] + border_width - 2),
+        radius=18,
         outline=(255, 255, 255, 30),
         width=1
     )
     
-    # Progress fill
-    fill_w = int(width * progress)
+    return frame.filter(ImageFilter.GaussianBlur(5))
+
+# ================= SPOTIFY-STYLE BUTTONS =================
+
+def create_spotify_play_button(size=72):
+    """Create Spotify-style play button with circular design"""
+    btn = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(btn)
+    center = size // 2
     
-    if fill_w > 0:
-        # Glow behind progress
-        for i in range(5, 0, -1):
-            alpha = int(15 * (i / 5))
+    # Outer shadow
+    for i in range(8, 0, -2):
+        alpha = int(15 * (i / 8))
+        draw.ellipse(
+            (center - size//2 - i, center - size//2 - i,
+             center + size//2 + i, center + size//2 + i),
+            fill=(0, 0, 0, alpha)
+        )
+    
+    # Main circle background - Spotify green
+    draw.ellipse(
+        (center - size//2 + 3, center - size//2 + 3,
+         center + size//2 - 3, center + size//2 - 3),
+        fill=SPOTIFY_GREEN
+    )
+    
+    # Inner gradient effect
+    for i in range(size//2 - 3, size//4, -1):
+        ratio = (i - size//4) / (size//2 - size//4)
+        color = blend_colors(SPOTIFY_GREEN, (50, 230, 120), ratio)
+        alpha = int(100 * ratio)
+        draw.ellipse(
+            (center - i, center - i, center + i, center + i),
+            fill=(*color, alpha)
+        )
+    
+    # White play triangle
+    triangle_size = size // 5
+    offset_x = 2  # Slight right offset for visual balance
+    points = [
+        (center - triangle_size + offset_x, center - triangle_size),
+        (center - triangle_size + offset_x, center + triangle_size),
+        (center + triangle_size + offset_x, center)
+    ]
+    draw.polygon(points, fill=WHITE)
+    
+    # Subtle border
+    draw.ellipse(
+        (center - size//2 + 3, center - size//2 + 3,
+         center + size//2 - 3, center + size//2 - 3),
+        outline=(255, 255, 255, 30),
+        width=1
+    )
+    
+    return btn
+
+def create_spotify_nav_button(size=44, direction="prev"):
+    """Create Spotify-style navigation button"""
+    btn = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(btn)
+    center = size // 2
+    
+    # Circular background with glass effect
+    draw.ellipse(
+        (2, 2, size - 2, size - 2),
+        fill=(255, 255, 255, 12)
+    )
+    
+    # Border
+    draw.ellipse(
+        (2, 2, size - 2, size - 2),
+        outline=(255, 255, 255, 25),
+        width=1.5
+    )
+    
+    if direction == "prev":
+        # Previous track icon (two triangles + bar)
+        bar_x = size // 4 + 2
+        tri_w = size // 6
+        tri_h = size // 4
+        
+        # Vertical bar
+        draw.rectangle(
+            (bar_x - 1.5, center - tri_h, bar_x + 1.5, center + tri_h),
+            fill=(255, 255, 255, 200)
+        )
+        
+        # Two triangles pointing left
+        for offset in [0, size // 5]:
+            points = [
+                (bar_x + 4 + offset, center - tri_h),
+                (bar_x + 4 + offset, center + tri_h),
+                (bar_x + 4 - tri_w + offset, center)
+            ]
+            draw.polygon(points, fill=(255, 255, 255, 200))
+    
+    elif direction == "next":
+        # Next track icon (two triangles + bar)
+        bar_x = size - size // 4 - 2
+        tri_w = size // 6
+        tri_h = size // 4
+        
+        # Vertical bar
+        draw.rectangle(
+            (bar_x - 1.5, center - tri_h, bar_x + 1.5, center + tri_h),
+            fill=(255, 255, 255, 200)
+        )
+        
+        # Two triangles pointing right
+        for offset in [0, -size // 5]:
+            points = [
+                (bar_x - 4 + offset, center - tri_h),
+                (bar_x - 4 + offset, center + tri_h),
+                (bar_x - 4 + tri_w + offset, center)
+            ]
+            draw.polygon(points, fill=(255, 255, 255, 200))
+    
+    return btn
+
+def create_shuffle_button(size=40):
+    """Create shuffle button"""
+    btn = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(btn)
+    
+    # Two crossed arrows
+    arrow_color = (255, 255, 255, 180)
+    offset = size // 4
+    
+    # Arrow 1 (up-right)
+    points1 = [
+        (offset, size - offset),
+        (size - offset, offset),
+        (size - offset - 5, offset + 5),
+        (offset + 3, size - offset - 3)
+    ]
+    draw.line(points1[:2], fill=arrow_color, width=2)
+    
+    # Arrow 2 (down-right)
+    points2 = [
+        (offset, offset),
+        (size - offset, size - offset),
+        (size - offset - 5, size - offset - 5),
+        (offset + 3, offset + 3)
+    ]
+    draw.line(points2[:2], fill=arrow_color, width=2)
+    
+    return btn
+
+def create_repeat_button(size=40):
+    """Create repeat button"""
+    btn = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(btn)
+    center = size // 2
+    
+    # Circular arrows
+    bbox = (center - 8, center - 12, center + 8, center + 12)
+    draw.arc(bbox, 45, 315, fill=(255, 255, 255, 180), width=2)
+    
+    # Arrow head
+    arrow_pos = (bbox[2], bbox[2] - 5)
+    draw.polygon([
+        (arrow_pos[0] + 3, arrow_pos[1] - 5),
+        (arrow_pos[0] - 5, arrow_pos[1]),
+        (arrow_pos[0] + 3, arrow_pos[1] + 5)
+    ], fill=(255, 255, 255, 180))
+    
+    return btn
+
+def create_spotify_progress_bar(width, height, progress=0.3, current_time="1:15", total_time="3:56"):
+    """Create Spotify-style progress bar"""
+    bar_height = height
+    bar_image = Image.new("RGBA", (width, bar_height + 40), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(bar_image)
+    
+    bar_y = 15
+    bar_radius = bar_height // 2
+    
+    # Background track
+    draw.rounded_rectangle(
+        (0, bar_y, width, bar_y + bar_height),
+        radius=bar_radius,
+        fill=(255, 255, 255, 15)
+    )
+    
+    # Progress fill with gradient
+    fill_width = int(width * progress)
+    if fill_width > 0:
+        # Glow under progress
+        for i in range(4, 0, -1):
+            alpha = int(8 * (i / 4))
             draw.rounded_rectangle(
-                (0 - i, bar_y - i, fill_w + i, bar_y + bar_h + i),
-                radius=(bar_h + i) // 2,
-                fill=(*color, alpha)
+                (0 - i, bar_y - i, fill_width + i, bar_y + bar_height + i),
+                radius=bar_radius + i,
+                fill=(*SPOTIFY_GREEN, alpha)
             )
         
         # Main progress
         draw.rounded_rectangle(
-            (0, bar_y, fill_w, bar_y + bar_h),
-            radius=bar_h // 2,
-            fill=color
+            (0, bar_y, fill_width, bar_y + bar_height),
+            radius=bar_radius,
+            fill=SPOTIFY_GREEN
         )
         
-        # Highlight on top
+        # Progress highlight
         draw.rounded_rectangle(
-            (0, bar_y, fill_w, bar_y + bar_h // 2),
-            radius=bar_h // 2,
-            fill=(255, 255, 255, 35)
+            (0, bar_y, fill_width, bar_y + bar_height // 2),
+            radius=bar_radius,
+            fill=(255, 255, 255, 20)
         )
-    
-    # Thumb
-    thumb_x = max(10, fill_w)
-    thumb_y = bar_y + bar_h // 2
-    
-    # Thumb glow
-    for i in range(4, 0, -1):
-        alpha = int(50 * (i / 4))
-        draw.ellipse(
-            (thumb_x - 10 - i*2, thumb_y - 10 - i*2,
-             thumb_x + 10 + i*2, thumb_y + 10 + i*2),
-            fill=(*color, alpha)
-        )
-    
-    # Thumb white circle
-    draw.ellipse(
-        (thumb_x - 10, thumb_y - 10, thumb_x + 10, thumb_y + 10),
-        fill=WHITE
-    )
-    
-    # Thumb colored dot
-    draw.ellipse(
-        (thumb_x - 4, thumb_y - 4, thumb_x + 4, thumb_y + 4),
-        fill=color
-    )
-    
-    return bar_img
-
-# ================= CONTROL BUTTONS =================
-
-def create_play_button(size):
-    """Create premium play button using play_icons asset or generate"""
-    asset_path = "AnonXMusic/assets/play_icons.png"
-    
-    # Try to load from asset
-    if os.path.exists(asset_path):
-        try:
-            asset = Image.open(asset_path).convert("RGBA")
-            # Extract play button (middle section)
-            section_w = asset.width // 3
-            play_section = asset.crop((section_w, 0, section_w * 2, asset.height))
-            play_section = play_section.resize((size, size), Image.LANCZOS)
-            
-            # Add glow background
-            btn = Image.new("RGBA", (size + 20, size + 20), (0, 0, 0, 0))
-            draw = ImageDraw.Draw(btn)
-            
-            # Glow circle behind
-            for i in range(5, 0, -1):
-                alpha = int(20 * (i / 5))
-                draw.ellipse(
-                    (10 - i*3, 10 - i*3, size + 10 + i*3, size + 10 + i*3),
-                    fill=(*NEON_PURPLE, alpha)
-                )
-            
-            btn.paste(play_section, (10, 10), play_section)
-            return btn
-        except:
-            pass
-    
-    # Fallback: generate play button
-    btn = Image.new("RGBA", (size + 20, size + 20), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(btn)
-    center = (size + 20) // 2
-    radius = size // 3
-    
-    # Glow rings
-    for i in range(6, 0, -1):
-        alpha = int(18 * (i / 6))
-        draw.ellipse(
-            (center - radius - i*3, center - radius - i*3,
-             center + radius + i*3, center + radius + i*3),
-            fill=(*NEON_PURPLE, alpha)
-        )
-    
-    # Main circle
-    draw.ellipse(
-        (center - radius, center - radius, center + radius, center + radius),
-        fill=(*NEON_PURPLE, 240)
-    )
-    
-    # Play triangle
-    tri = int(radius * 0.7)
-    points = [
-        (center - tri//3 + 3, center - tri//2),
-        (center - tri//3 + 3, center + tri//2),
-        (center + tri*2//3 + 3, center)
-    ]
-    draw.polygon(points, fill=WHITE)
-    
-    return btn
-
-def create_nav_button(size, direction):
-    """Create prev/next navigation buttons from asset or generate"""
-    asset_path = "AnonXMusic/assets/play_icons.png"
-    
-    if os.path.exists(asset_path):
-        try:
-            asset = Image.open(asset_path).convert("RGBA")
-            section_w = asset.width // 3
-            
-            if direction == "prev":
-                icon_section = asset.crop((0, 0, section_w, asset.height))
-            else:
-                icon_section = asset.crop((section_w * 2, 0, asset.width, asset.height))
-            
-            icon_section = icon_section.resize((size, size), Image.LANCZOS)
-            
-            btn = Image.new("RGBA", (size + 10, size + 10), (0, 0, 0, 0))
-            btn.paste(icon_section, (5, 5), icon_section)
-            return btn
-        except:
-            pass
-    
-    # Fallback: generate nav buttons
-    btn = Image.new("RGBA", (size + 10, size + 10), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(btn)
-    center = (size + 10) // 2
-    r = size // 3
-    
-    # Glow circle
-    draw.ellipse(
-        (center - r - 2, center - r - 2, center + r + 2, center + r + 2),
-        fill=(*NEON_PURPLE, 30),
-        outline=(*NEON_PURPLE_LIGHT, 150),
-        width=2
-    )
-    
-    tri_w = size // 7
-    tri_h = size // 5
-    
-    if direction == "prev":
-        # Left arrows
-        bar_x = center - r + 5
-        draw.rectangle((bar_x, center - tri_h, bar_x + 3, center + tri_h), fill=WHITE)
         
-        for offset in [0, size // 7]:
-            points = [
-                (bar_x + 6 + offset, center - tri_h),
-                (bar_x + 6 + offset, center + tri_h),
-                (bar_x + 6 - tri_w + offset, center)
-            ]
-            draw.polygon(points, fill=WHITE)
-    else:
-        # Right arrows
-        bar_x = center + r - 8
-        draw.rectangle((bar_x, center - tri_h, bar_x + 3, center + tri_h), fill=WHITE)
+        # Thumb dot
+        dot_radius = 7
+        dot_x = fill_width
+        dot_y = bar_y + bar_height // 2
         
-        for offset in [0, -size // 7]:
-            points = [
-                (bar_x - 6 + offset, center - tri_h),
-                (bar_x - 6 + offset, center + tri_h),
-                (bar_x - 6 + tri_w + offset, center)
-            ]
-            draw.polygon(points, fill=WHITE)
-    
-    return btn
-
-# ================= PADDING & LOADING FONTS =================
-
-def load_fonts():
-    """Load all required fonts with fallbacks"""
-    fonts = {}
-    
-    font_map = {
-        'now_playing': ('AnonXMusic/assets/font2.ttf', 22),
-        'title': ('AnonXMusic/assets/font2.ttf', 50),
-        'artist': ('AnonXMusic/assets/font.ttf', 30),
-        'small': ('AnonXMusic/assets/font.ttf', 17),
-    }
-    
-    for name, (path, size) in font_map.items():
-        try:
-            if os.path.exists(path):
-                fonts[name] = ImageFont.truetype(path, size)
-            else:
-                raise Exception("Font not found")
-        except:
-            try:
-                # Try system fonts
-                fonts[name] = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
-            except:
-                try:
-                    fonts[name] = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
-                except:
-                    fonts[name] = ImageFont.load_default()
-    
-    return fonts
-
-# ================= PROFILE PICTURE =================
-
-async def get_user_profile_pic(user_id):
-    """Get user's Telegram profile picture"""
-    if not user_id:
-        return None
-    
-    try:
-        photos = await app.get_profile_photos(user_id, limit=1)
-        if photos and len(photos) > 0:
-            file_path = await app.download_media(photos[0].file_id)
-            if file_path and os.path.exists(file_path):
-                img = Image.open(file_path).convert("RGBA")
-                os.remove(file_path)
-                return create_circular_image(img, 70)
-    except Exception as e:
-        print(f"Profile pic error: {e}")
-    
-    # Default avatar
-    size = 70
-    default = Image.new("RGBA", (size, size), (*NEON_PURPLE, 200))
-    draw = ImageDraw.Draw(default)
-    draw.ellipse((size//4, size//3, size*3//4, size*2//3), outline=WHITE, width=2)
-    draw.ellipse((size//4, size//2, size*3//4, size*2//3+5), fill=WHITE)
-    
-    return create_circular_image(default, size)
-
-def create_profile_badge(profile_pic):
-    """Create profile picture with neon ring"""
-    badge_size = 100
-    badge = Image.new("RGBA", (badge_size, badge_size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(badge)
-    center = badge_size // 2
-    
-    # Neon ring
-    for i in range(4, 0, -1):
-        alpha = int(30 * (i / 4))
-        r = 35 + 2 + i * 2
+        # Dot shadow
+        for i in range(3, 0, -1):
+            alpha = int(15 * (i / 3))
+            draw.ellipse(
+                (dot_x - dot_radius - i, dot_y - dot_radius - i,
+                 dot_x + dot_radius + i, dot_y + dot_radius + i),
+                fill=(0, 0, 0, alpha)
+            )
+        
+        # Dot fill
         draw.ellipse(
-            (center - r, center - r, center + r, center + r),
-            outline=(*NEON_PURPLE_LIGHT, alpha),
+            (dot_x - dot_radius, dot_y - dot_radius,
+             dot_x + dot_radius, dot_y + dot_radius),
+            fill=WHITE
+        )
+        
+        # Dot border
+        draw.ellipse(
+            (dot_x - dot_radius, dot_y - dot_radius,
+             dot_x + dot_radius, dot_y + dot_radius),
+            outline=SPOTIFY_GREEN,
             width=2
         )
     
-    # Main ring
-    r = 37
-    draw.ellipse(
-        (center - r, center - r, center + r, center + r),
-        outline=(*NEON_PURPLE_LIGHT, 200),
-        width=2
+    # Time labels
+    try:
+        time_font = ImageFont.truetype("AnonXMusic/assets/font.ttf", 14)
+    except:
+        try:
+            time_font = ImageFont.truetype("AnonXMusic/assets/font2.ttf", 14)
+        except:
+            time_font = ImageFont.load_default()
+    
+    # Current time
+    draw.text((0, bar_y + bar_height + 8), current_time, fill=(255, 255, 255, 160), font=time_font)
+    
+    # Total time
+    total_time_bbox = draw.textbbox((0, 0), total_time, font=time_font)
+    total_time_width = total_time_bbox[2] - total_time_bbox[0]
+    draw.text(
+        (width - total_time_width, bar_y + bar_height + 8),
+        total_time,
+        fill=(255, 255, 255, 160),
+        font=time_font
     )
     
-    # Paste profile pic
-    badge.paste(profile_pic, (15, 15), profile_pic)
+    return bar_image
+
+def create_spotify_controls():
+    """Create complete Spotify-style control panel"""
+    panel_width = 350
+    panel_height = 120
+    
+    panel = Image.new("RGBA", (panel_width, panel_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(panel)
+    
+    # Glass background for controls
+    glass = create_glass_effect((panel_width, panel_height), 15)
+    panel = Image.alpha_composite(panel, glass)
+    
+    # Button positions
+    center_x = panel_width // 2
+    center_y = panel_height // 2
+    
+    # Shuffle button (left side)
+    shuffle_btn = create_shuffle_button(36)
+    shuffle_x = center_x - 120
+    shuffle_y = center_y - 18
+    panel.alpha_composite(shuffle_btn, (shuffle_x, shuffle_y))
+    
+    # Previous button
+    prev_btn = create_spotify_nav_button(40, "prev")
+    prev_x = center_x - 70
+    prev_y = center_y - 20
+    panel.alpha_composite(prev_btn, (prev_x, prev_y))
+    
+    # Play button (center, larger)
+    play_btn = create_spotify_play_button(64)
+    play_x = center_x - 32
+    play_y = center_y - 32
+    panel.alpha_composite(play_btn, (play_x, play_y))
+    
+    # Next button
+    next_btn = create_spotify_nav_button(40, "next")
+    next_x = center_x + 30
+    next_y = center_y - 20
+    panel.alpha_composite(next_btn, (next_x, next_y))
+    
+    # Repeat button (right side)
+    repeat_btn = create_repeat_button(36)
+    repeat_x = center_x + 85
+    repeat_y = center_y - 18
+    panel.alpha_composite(repeat_btn, (repeat_x, repeat_y))
+    
+    return panel
+
+def create_now_playing_badge(width, height=30):
+    """Create animated-style NOW PLAYING badge"""
+    badge = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(badge)
+    
+    # Glass background
+    draw.rounded_rectangle(
+        (0, 0, width, height),
+        radius=height // 2,
+        fill=(147, 51, 234, 25)
+    )
+    
+    # Border
+    draw.rounded_rectangle(
+        (0, 0, width, height),
+        radius=height // 2,
+        outline=(147, 51, 234, 60),
+        width=1
+    )
     
     return badge
 
 # ================= MAIN FUNCTION =================
 
 async def get_thumb(videoid, user_id=None):
-    """Generate premium neon purple thumbnail"""
+    """
+    Generate premium Spotify-style neon purple thumbnail for music bot.
+    
+    Args:
+        videoid: YouTube video ID
+        user_id: Optional user ID for caching
+        
+    Returns:
+        Path to generated thumbnail image
+    """
+    # Ensure cache directory exists
     ensure_cache_dir()
     
-    cache_name = f"{videoid}_{user_id}.png" if user_id else f"{videoid}.png"
+    # Generate cache filename
+    cache_name = f"spotify_{videoid}_{user_id}.png" if user_id else f"spotify_{videoid}_thumb.png"
     cache_path = os.path.join(CACHE_DIR, cache_name)
     
+    # Return cached if exists
     if os.path.exists(cache_path):
         return cache_path
     
-    # ===== FETCH DATA =====
+    # ========== FETCH VIDEO DATA ==========
     try:
         url = f"https://www.youtube.com/watch?v={videoid}"
         vs = VideosSearch(url, limit=1)
         results = await vs.next()
         data = results["result"][0]
         
-        title = re.sub(r"[^\w\s-]", "", data.get("title", "Unknown")).strip()
+        # Extract and clean data
+        title = re.sub(r"[^\w\s-]", "", data.get("title", "Unknown Title")).strip()
         title = re.sub(r"\s+", " ", title)
         
         artist = data.get("channel", {}).get("name", "Unknown Artist")
         duration = data.get("duration", "0:00")
+        views = data.get("viewCount", {}).get("text", "0 views")
         
         thumb_url = data.get("thumbnails", [{}])[-1].get("url", "")
         if thumb_url:
@@ -503,10 +600,13 @@ async def get_thumb(videoid, user_id=None):
         
         if not thumb_url:
             return YOUTUBE_IMG_URL
-    except:
+            
+    except Exception as e:
+        print(f"[Thumbnail] Error fetching data: {e}")
+        traceback.print_exc()
         return YOUTUBE_IMG_URL
     
-    # ===== DOWNLOAD COVER =====
+    # ========== DOWNLOAD COVER ART ==========
     thumb_file = os.path.join(CACHE_DIR, f"{videoid}_raw.jpg")
     
     try:
@@ -514,205 +614,331 @@ async def get_thumb(videoid, user_id=None):
             async with session.get(thumb_url, timeout=10) as resp:
                 if resp.status != 200:
                     return YOUTUBE_IMG_URL
+                    
                 async with aiofiles.open(thumb_file, "wb") as f:
                     await f.write(await resp.read())
-    except:
+    except Exception as e:
+        print(f"[Thumbnail] Error downloading cover: {e}")
         return YOUTUBE_IMG_URL
     
-    # ===== CREATE THUMBNAIL =====
+    # ========== CREATE PREMIUM CANVAS ==========
     try:
+        # Load cover art
         cover_img = Image.open(thumb_file).convert("RGBA")
         
-        # Background
-        bg = create_background(*CANVAS_SIZE)
+        # Create canvas with gradient background
+        bg = create_gradient_background(
+            CANVAS_SIZE[0], CANVAS_SIZE[1],
+            DEEP_PURPLE, DARK_BG
+        )
         canvas = Image.new("RGBA", CANVAS_SIZE)
         canvas.paste(bg, (0, 0))
         
-        # Glow effect
-        glow = create_subtle_glow(CANVAS_SIZE)
-        canvas = Image.alpha_composite(canvas, glow)
+        # ===== ADD PREMIUM BACKGROUND EFFECTS =====
+        # Radial glow
+        glow1 = create_radial_glow(
+            CANVAS_SIZE, NEON_PURPLE,
+            center=(CANVAS_SIZE[0] // 3, CANVAS_SIZE[1] // 2),
+            intensity=0.06
+        )
+        canvas = Image.alpha_composite(canvas, glow1)
+        
+        # Second glow for depth
+        glow2 = create_radial_glow(
+            CANVAS_SIZE, NEON_MAGENTA,
+            center=(CANVAS_SIZE[0] * 2 // 3, CANVAS_SIZE[1] // 3),
+            intensity=0.04
+        )
+        canvas = Image.alpha_composite(canvas, glow2)
         
         # Particles
-        particles = create_particles(CANVAS_SIZE)
+        particles = create_particle_field(CANVAS_SIZE, NEON_PURPLE_LIGHT, 100)
         canvas = Image.alpha_composite(canvas, particles)
         
-        # ===== COVER ART =====
+        # Noise overlay for premium texture
+        noise = create_noise_overlay(CANVAS_SIZE, 3)
+        canvas = Image.alpha_composite(canvas, noise)
+        
+        # ===== PROCESS COVER ART ====
         cover = cover_img.resize((COVER_SIZE, COVER_SIZE), Image.LANCZOS)
-        cover = ImageEnhance.Contrast(cover).enhance(1.2)
+        
+        # Enhance cover art
+        cover = ImageEnhance.Contrast(cover).enhance(1.15)
         cover = ImageEnhance.Color(cover).enhance(1.1)
-        cover = ImageEnhance.Sharpness(cover).enhance(1.3)
+        cover = ImageEnhance.Sharpness(cover).enhance(1.2)
+        cover = ImageEnhance.Brightness(cover).enhance(1.05)
         
-        # Shadow
-        shadow = create_cover_shadow()
-        canvas.alpha_composite(shadow, (COVER_X - 20, COVER_Y - 20))
+        # Create cover frame with shadow
+        frame = create_cover_art_frame((COVER_SIZE, COVER_SIZE), 20)
         
-        # Glow border
-        glow_border = create_cover_glow_border()
-        canvas.alpha_composite(glow_border, (COVER_X - 15, COVER_Y - 15))
-        
-        # Rounded cover
+        # Apply rounded corners to cover
         cover_mask = Image.new("L", (COVER_SIZE, COVER_SIZE), 0)
         ImageDraw.Draw(cover_mask).rounded_rectangle(
-            (0, 0, COVER_SIZE, COVER_SIZE), radius=22, fill=255
+            (0, 0, COVER_SIZE, COVER_SIZE),
+            radius=20,
+            fill=255
         )
         cover.putalpha(cover_mask)
-        canvas.alpha_composite(cover, (COVER_X, COVER_Y))
         
-        # ===== FONTS =====
-        fonts = load_fonts()
+        # Paste frame and cover
+        frame_with_cover = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+        frame_with_cover.paste(frame, (0, 0))
+        frame_with_cover.paste(cover, (20, 20), cover)
+        
+        canvas.alpha_composite(frame_with_cover, (COVER_X - 20, COVER_Y - 20 - 5))
+        
+        # ===== LOAD FONTS =====
+        font_paths = [
+            "AnonXMusic/assets/font2.ttf",
+            "AnonXMusic/assets/font.ttf",
+        ]
+        
+        # Try to use premium fonts
+        title_font = None
+        artist_font = None
+        subtitle_font = None
+        small_font = None
+        
+        for font_path in font_paths:
+            try:
+                if os.path.exists(font_path):
+                    title_font = ImageFont.truetype(font_path, 46)
+                    artist_font = ImageFont.truetype(font_path, 26)
+                    subtitle_font = ImageFont.truetype(font_path, 18)
+                    small_font = ImageFont.truetype(font_path, 15)
+                    break
+            except:
+                continue
+        
+        if title_font is None:
+            title_font = ImageFont.load_default()
+            artist_font = ImageFont.load_default()
+            subtitle_font = ImageFont.load_default()
+            small_font = ImageFont.load_default()
+        
         draw = ImageDraw.Draw(canvas)
         
-        # ===== PROFILE PICTURE =====
-        if user_id:
-            profile_pic = await get_user_profile_pic(user_id)
-            if profile_pic:
-                badge = create_profile_badge(profile_pic)
-                canvas.alpha_composite(badge, (RIGHT_START_X, NOW_PLAYING_Y - 60))
-                now_playing_x = RIGHT_START_X + 110
-            else:
-                now_playing_x = RIGHT_START_X
-        else:
-            now_playing_x = RIGHT_START_X
+        # ===== NOW PLAYING BADGE =====
+        badge_width = 180
+        badge = create_now_playing_badge(badge_width, 32)
+        canvas.alpha_composite(badge, (RIGHT_START_X, NOW_PLAYING_Y - 8))
         
-        # ===== NOW PLAYING =====
-        np_text = "◆ NOW PLAYING"
-        
-        # Glow
-        for offset in range(3, 0, -1):
-            draw.text(
-                (now_playing_x - offset, NOW_PLAYING_Y - offset),
-                np_text,
-                font=fonts['now_playing'],
-                fill=(*NEON_PURPLE_LIGHT, 40 - offset * 10)
-            )
-        
+        # NOW PLAYING text
         draw.text(
-            (now_playing_x, NOW_PLAYING_Y),
-            np_text,
-            font=fonts['now_playing'],
+            (RIGHT_START_X + 15, NOW_PLAYING_Y - 2),
+            "◆ NOW PLAYING",
+            font=subtitle_font,
             fill=NEON_PURPLE_LIGHT
         )
         
-        # ===== SONG TITLE =====
-        title_text = trim_text(title, fonts['title'], RIGHT_WIDTH)
+        # ===== SONG TITLE WITH GLOW =====
+        title_text = trim_text(title, title_font, RIGHT_WIDTH)
         
-        for offset in range(4, 0, -1):
+        # Multiple glow layers for premium look
+        for offset in range(5, 0, -1):
+            alpha = 30 - offset * 5
             draw.text(
                 (RIGHT_START_X - offset, TITLE_Y - offset),
                 title_text,
-                font=fonts['title'],
-                fill=(*NEON_PURPLE, 35 - offset * 7)
+                font=title_font,
+                fill=(*NEON_PURPLE, alpha)
             )
         
+        # Main title
         draw.text(
             (RIGHT_START_X, TITLE_Y),
             title_text,
-            font=fonts['title'],
+            font=title_font,
             fill=WHITE
         )
         
-        # ===== ARTIST =====
-        artist_text = trim_text(f"🎙 {artist}", fonts['artist'], RIGHT_WIDTH - 20)
+        # Title underline accent
+        title_bbox = draw.textbbox((RIGHT_START_X, TITLE_Y), title_text, font=title_font)
+        title_width = title_bbox[2] - title_bbox[0]
+        accent_y = TITLE_Y + title_font.size + 8
+        
+        # Gradient accent line under title
+        accent_width = min(title_width, 200)
+        for i in range(3):
+            alpha = 150 - i * 50
+            draw.line(
+                [(RIGHT_START_X, accent_y + i), (RIGHT_START_X + accent_width, accent_y + i)],
+                fill=(*NEON_PURPLE, alpha),
+                width=2
+            )
+        
+        # ===== ARTIST NAME =====
+        artist_text = trim_text(artist, artist_font, RIGHT_WIDTH - 40)
         
         draw.text(
             (RIGHT_START_X, ARTIST_Y),
             artist_text,
-            font=fonts['artist'],
+            font=artist_font,
             fill=LIGHT_GRAY
         )
         
-        # ===== PROGRESS BAR =====
-        progress = create_progress_bar(RIGHT_WIDTH, 0.55, NEON_PURPLE)
-        canvas.alpha_composite(progress, (RIGHT_START_X, PROGRESS_Y))
+        # Verified badge
+        badge_size = 20
+        badge_x = RIGHT_START_X + draw.textlength(artist_text, font=artist_font) + 10
+        badge_y = ARTIST_Y + 8
         
-        # Duration
-        dur_text = str(duration) if duration else "0:00"
-        dur_bbox = fonts['small'].getbbox(dur_text)
-        dur_width = dur_bbox[2] - dur_bbox[0]
-        
-        draw.text(
-            (RIGHT_START_X + RIGHT_WIDTH - dur_width, PROGRESS_Y + 18),
-            dur_text,
-            font=fonts['small'],
-            fill=(255, 255, 255, 200)
-        )
-        
-        # ===== PLAY CONTROLS =====
-        play_btn = create_play_button(70)
-        prev_btn = create_nav_button(50, "prev")
-        next_btn = create_nav_button(50, "next")
-        
-        # Center controls
-        controls_width = 50 + 40 + 90 + 40 + 50  # prev + spacing + play + spacing + next
-        controls_start_x = RIGHT_START_X + (RIGHT_WIDTH - controls_width) // 2
-        
-        prev_x = controls_start_x
-        play_x = controls_start_x + 50 + 40
-        next_x = controls_start_x + 50 + 40 + 90 + 40
-        
-        # Vertically center all buttons
-        max_btn_height = 90
-        controls_y_center = CONTROLS_Y
-        
-        canvas.alpha_composite(prev_btn, (prev_x, controls_y_center + (max_btn_height - 60) // 2))
-        canvas.alpha_composite(play_btn, (play_x, controls_y_center + (max_btn_height - 90) // 2))
-        canvas.alpha_composite(next_btn, (next_x, controls_y_center + (max_btn_height - 60) // 2))
-        
-        # ===== BOT NAME =====
-        bot_name = getattr(app, 'name', 'RaspberryRhythm')
-        
-        # Status dot
-        dot_y = BOT_NAME_Y
+        # Simple checkmark circle
         draw.ellipse(
-            (RIGHT_START_X + (RIGHT_WIDTH - len(bot_name) * 10) // 2 - 16, dot_y + 4,
-             RIGHT_START_X + (RIGHT_WIDTH - len(bot_name) * 10) // 2 - 6, dot_y + 14),
-            fill=(0, 255, 100, 230)
+            (badge_x, badge_y, badge_x + badge_size, badge_y + badge_size),
+            fill=SPOTIFY_GREEN
+        )
+        draw.text(
+            (badge_x + 4, badge_y + 2),
+            "✓",
+            font=small_font,
+            fill=WHITE
         )
         
+        # ===== ALBUM/YEAR INFO =====
         draw.text(
-            (RIGHT_START_X + (RIGHT_WIDTH - len(bot_name) * 10) // 2, dot_y),
-            f"⚡ {bot_name}",
-            font=fonts['small'],
+            (RIGHT_START_X, ALBUM_INFO_Y),
+            f"Album • {views} • YouTube Music",
+            font=subtitle_font,
+            fill=DARK_GRAY
+        )
+        
+        # ===== SPOTIFY-STYLE PROGRESS BAR =====
+        # Parse duration for progress display
+        current_time = "0:00"
+        if ":" in duration:
+            time_parts = duration.split(":")
+            if len(time_parts) == 2:
+                minutes, seconds = time_parts
+                current_duration = int(minutes) * 60 + int(seconds)
+                # Show 30% progress for preview
+                progress_value = min(0.3, current_duration / (current_duration + 180))
+                current_time = f"{int(current_duration * progress_value // 60)}:{int(current_duration * progress_value % 60):02d}"
+            else:
+                current_time = "0:00"
+        
+        progress_bar = create_spotify_progress_bar(
+            RIGHT_WIDTH, 6, 0.3, current_time, duration
+        )
+        canvas.alpha_composite(progress_bar, (RIGHT_START_X, PROGRESS_Y))
+        
+        # ===== SPOTIFY-STYLE CONTROLS =====
+        controls = create_spotify_controls()
+        controls_x = RIGHT_START_X + (RIGHT_WIDTH - 350) // 2
+        controls_y = CONTROLS_Y
+        canvas.alpha_composite(controls, (controls_x, controls_y))
+        
+        # ===== VOLUME BAR (BOTTOM) =====
+        volume_y = controls_y + 130
+        volume_width = 120
+        
+        # Volume icon
+        draw.text(
+            (RIGHT_START_X, volume_y),
+            "🔊",
+            font=small_font,
+            fill=LIGHT_GRAY
+        )
+        
+        # Volume bar
+        volume_bar_x = RIGHT_START_X + 25
+        volume_bar_y = volume_y + 8
+        
+        # Background
+        draw.rounded_rectangle(
+            (volume_bar_x, volume_bar_y, volume_bar_x + volume_width, volume_bar_y + 4),
+            radius=2,
+            fill=(255, 255, 255, 15)
+        )
+        
+        # Fill (70%)
+        fill_width = int(volume_width * 0.7)
+        draw.rounded_rectangle(
+            (volume_bar_x, volume_bar_y, volume_bar_x + fill_width, volume_bar_y + 4),
+            radius=2,
             fill=NEON_PURPLE_LIGHT
         )
         
-        # ===== SIGNATURE =====
-        signature = "✦ Made with 🤍 by @DivineDemonn ✦"
-        sig_bbox = fonts['small'].getbbox(signature)
-        sig_width = sig_bbox[2] - sig_bbox[0]
-        sig_x = (CANVAS_SIZE[0] - sig_width) // 2
+        # ===== SONG QUEUE INFO (BOTTOM RIGHT) =====
+        queue_y = volume_y
+        queue_x = RIGHT_START_X + RIGHT_WIDTH - 200
         
-        # Clean white text - NO blur
         draw.text(
-            (sig_x, SIGNATURE_Y),
+            (queue_x, queue_y),
+            "📋 Queue",
+            font=small_font,
+            fill=DARK_GRAY
+        )
+        
+        draw.text(
+            (queue_x + 50, queue_y),
+            f"▶ {title[:20]}...",
+            font=small_font,
+            fill=(255, 255, 255, 100)
+        )
+        
+        # ===== BOTTOM DECORATIVE LINE =====
+        line_y = CANVAS_SIZE[1] - 55
+        # Gradient line
+        for i in range(3):
+            alpha = 60 - i * 20
+            draw.line(
+                [(30, line_y + i), (CANVAS_SIZE[0] - 30, line_y + i)],
+                fill=(*NEON_PURPLE, alpha),
+                width=1
+            )
+        
+        # ===== SIGNATURE (BOTTOM LEFT) =====
+        signature = "Made with 🤍 by @DivineDemonn"
+        
+        # Glow effect
+        for offset in range(2, 0, -1):
+            draw.text(
+                (35 - offset, CANVAS_SIZE[1] - 40 - offset),
+                signature,
+                font=small_font,
+                fill=(*WHITE, 20 - offset * 5)
+            )
+        
+        draw.text(
+            (35, CANVAS_SIZE[1] - 40),
             signature,
-            font=fonts['small'],
-            fill=(245, 245, 255, 230)
+            font=small_font,
+            fill=(255, 255, 255, 150)
         )
         
-        # ===== DECORATIVE LINES =====
-        # Top line
-        draw.line(
-            [(30, 15), (CANVAS_SIZE[0] - 30, 15)],
-            fill=(*NEON_PURPLE_LIGHT, 50),
+        # ===== VERSION & QUALITY BADGE (BOTTOM RIGHT) =====
+        badge_text = "PREMIUM HD"
+        badge_bbox = draw.textbbox((0, 0), badge_text, font=small_font)
+        badge_w = badge_bbox[2] - badge_bbox[0] + 20
+        badge_h = 24
+        
+        badge_x = CANVAS_SIZE[0] - badge_w - 30
+        badge_y = CANVAS_SIZE[1] - 45
+        
+        # Badge background
+        draw.rounded_rectangle(
+            (badge_x, badge_y, badge_x + badge_w, badge_y + badge_h),
+            radius=12,
+            fill=(147, 51, 234, 40),
+            outline=(147, 51, 234, 80),
             width=1
         )
         
-        # Bottom line above signature
-        draw.line(
-            [(50, SIGNATURE_Y - 10), (CANVAS_SIZE[0] - 50, SIGNATURE_Y - 10)],
-            fill=(*NEON_PURPLE, 35),
-            width=1
+        draw.text(
+            (badge_x + 10, badge_y + 4),
+            badge_text,
+            font=small_font,
+            fill=NEON_PURPLE_LIGHT
         )
         
-        # ===== SAVE =====
-        final = canvas.convert("RGB")
-        final.save(cache_path, "PNG", quality=100, optimize=True)
+        # ===== SAVE THUMBNAIL =====
+        final_canvas = canvas.convert("RGB")
+        final_canvas.save(cache_path, "PNG", quality=100, optimize=True)
         
-        # Cleanup
+        # ===== CLEANUP =====
         cover_img.close()
         canvas.close()
-        final.close()
+        final_canvas.close()
         bg.close()
         
         try:
@@ -720,40 +946,31 @@ async def get_thumb(videoid, user_id=None):
         except:
             pass
         
-        # Cache management
+        # ===== MANAGE CACHE SIZE =====
         try:
-            files = sorted(
-                [os.path.join(CACHE_DIR, f) for f in os.listdir(CACHE_DIR) if f.endswith(('.png', '.jpg'))],
-                key=os.path.getmtime, reverse=True
+            cache_files = sorted(
+                [os.path.join(CACHE_DIR, f) for f in os.listdir(CACHE_DIR) if f.endswith('.png')],
+                key=os.path.getmtime,
+                reverse=True
             )
-            for old in files[15:]:
-                os.remove(old)
+            
+            for old_file in cache_files[15:]:
+                try:
+                    os.remove(old_file)
+                except:
+                    pass
         except:
             pass
         
         return cache_path
         
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"[Thumbnail] Error generating thumbnail: {e}")
         traceback.print_exc()
+        
         try:
             os.remove(thumb_file)
         except:
             pass
+        
         return YOUTUBE_IMG_URL
-
-
-# ================= SHADOW HELPER =================
-def create_cover_shadow():
-    """Create shadow for cover art"""
-    shadow_size = COVER_SIZE + 40
-    shadow = Image.new("RGBA", (shadow_size, shadow_size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(shadow)
-    
-    draw.rounded_rectangle(
-        (20, 20, COVER_SIZE + 20, COVER_SIZE + 20),
-        radius=25,
-        fill=(0, 0, 0, 180)
-    )
-    
-    return shadow.filter(ImageFilter.GaussianBlur(30))
