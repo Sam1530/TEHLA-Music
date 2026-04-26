@@ -532,6 +532,9 @@ def create_now_playing_badge(width, height=30):
     return badge
 
 # ================= MAIN FUNCTION =================
+# ... [All imports and constants remain the same] ...
+
+# ================= MAIN FUNCTION =================
 
 async def get_thumb(videoid, user_id=None):
     """Generate premium neon purple thumbnail for music bot."""
@@ -675,38 +678,36 @@ async def get_thumb(videoid, user_id=None):
         
         draw = ImageDraw.Draw(canvas)
         
-        # ===== NOW PLAYING - GLOWING WHITE TEXT ✨ =====
+        # ===== NOW PLAYING - BOLD WHITE TEXT ⚡ =====
         badge_width = 210
         badge = create_now_playing_badge(badge_width, 34)
         canvas.alpha_composite(badge, (RIGHT_START_X - 5, NOW_PLAYING_Y - 10))
         
-        # Glow layers for NOW PLAYING
-        for offset in range(4, 0, -1):
-            alpha = 60 - offset * 12
-            draw.text(
-                (RIGHT_START_X + 15 - offset, NOW_PLAYING_Y - 3 - offset),
-                "◆ NOW PLAYING",
-                font=subtitle_font,
-                fill=(*NEON_PURPLE_LIGHT, alpha)  # Purple glow
-            )
+        # Strong dark shadow for contrast
+        draw.text(
+            (RIGHT_START_X + 17, NOW_PLAYING_Y),
+            "◆ NOW PLAYING",
+            font=subtitle_font,
+            fill=(0, 0, 0, 180)  # Dark shadow
+        )
         
-        # Main text - Bright white with eye-catching visibility
+        # Pure white bold text
         draw.text(
             (RIGHT_START_X + 15, NOW_PLAYING_Y - 3),
             "◆ NOW PLAYING",
             font=subtitle_font,
-            fill=(255, 255, 255, 255)  # Full bright white
+            fill=(255, 255, 255, 255)  # PURE WHITE
         )
         
         # ===== SONG TITLE =====
         title_text = trim_text(title, title_font, RIGHT_WIDTH)
         
-        # Soft shadow
+        # Strong shadow
         draw.text(
             (RIGHT_START_X + 2, TITLE_Y + 2),
             title_text,
             font=title_font,
-            fill=(0, 0, 0, 60)
+            fill=(0, 0, 0, 100)  # Stronger shadow
         )
         
         # Main title
@@ -826,36 +827,26 @@ async def get_thumb(videoid, user_id=None):
                 width=1
             )
         
-        # ===== SIGNATURE - GLOWING WHITE TEXT ✨ =====
+        # ===== SIGNATURE - BOLD WHITE TEXT ⚡ =====
         signature = "Made with ❤ by @DivineDemonn"
         
-        # Glow layers for signature
-        for offset in range(3, 0, -1):
-            alpha = 50 - offset * 12
-            draw.text(
-                (35 - offset, CANVAS_SIZE[1] - 40 - offset),
-                signature,
-                font=small_font,
-                fill=(*NEON_PURPLE_LIGHT, alpha)  # Purple glow
-            )
-        
-        # Shadow for depth
+        # Strong dark shadow for contrast
         draw.text(
-            (36, CANVAS_SIZE[1] - 39),
+            (37, CANVAS_SIZE[1] - 38),
             signature,
             font=small_font,
-            fill=(0, 0, 0, 80)
+            fill=(0, 0, 0, 200)  # Strong shadow
         )
         
-        # Main text - Bright glowing white
+        # Pure white bold text
         draw.text(
             (35, CANVAS_SIZE[1] - 40),
             signature,
             font=small_font,
-            fill=(255, 255, 255, 255)  # Full bright white
+            fill=(255, 255, 255, 255)  # PURE WHITE
         )
         
-        # ===== VERSION BADGE =====
+        # ===== VERSION BADGE - BOLD WHITE TEXT ⚡ =====
         badge_text = "PREMIUM HD"
         badge_bbox = draw.textbbox((0, 0), badge_text, font=small_font)
         badge_w = badge_bbox[2] - badge_bbox[0] + 20
@@ -864,19 +855,29 @@ async def get_thumb(videoid, user_id=None):
         badge_x = CANVAS_SIZE[0] - badge_w - 30
         badge_y = CANVAS_SIZE[1] - 45
         
+        # Stronger badge background for contrast
         draw.rounded_rectangle(
             (badge_x, badge_y, badge_x + badge_w, badge_y + badge_h),
             radius=12,
-            fill=(147, 51, 234, 40),
-            outline=(147, 51, 234, 80),
-            width=1
+            fill=(147, 51, 234, 60),  # More solid background
+            outline=(147, 51, 234, 120),  # Brighter outline
+            width=2  # Thicker outline
         )
         
+        # Shadow for badge text
+        draw.text(
+            (badge_x + 11, badge_y + 5),
+            badge_text,
+            font=small_font,
+            fill=(0, 0, 0, 150)
+        )
+        
+        # Pure white bold badge text
         draw.text(
             (badge_x + 10, badge_y + 4),
             badge_text,
             font=small_font,
-            fill=NEON_PURPLE_LIGHT
+            fill=(255, 255, 255, 255)  # PURE WHITE
         )
         
         # ===== SAVE =====
