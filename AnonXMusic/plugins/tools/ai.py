@@ -10,6 +10,7 @@ from pyrogram.enums import ParseMode
 from pyrogram.errors import FloodWait
 from AnonXMusic import app ## make sure you use your own repo module name 
 from AnonXMusic.utils.database import get_model_settings
+from config import YT_API_KEY as AI_KEY
 from config import BANNED_USERS
 import random
 import logging
